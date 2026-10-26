@@ -33,7 +33,7 @@ Pemain dapat memilih menu menggunakan klik tetikus atau menekan tombol `[SPACE]`
 
 ### 2.2. Calibration (Kalibrasi Warna Kursor)
 
-![Tampilan Kalibrasi Warna Kursor](docs/images/calibration (2).png)
+![Tampilan Kalibrasi Warna Kursor](docs/images/calibration.png)
 *Proses kalibrasi warna tangan atau objek penanda kursor.*
 
 Tahap kalibrasi bertujuan mengunci profil warna tangan pemain agar kursor dapat digerakkan secara stabil. 
@@ -50,7 +50,7 @@ Jika objek terlalu gelap atau warna tidak memenuhi syarat kestabilan, layar mena
 
 ### 2.3. Capture (Pengambilan Foto Puzzle)
 
-![Tampilan Pengambilan Foto Puzzle](docs/images/capture (2).png)
+![Tampilan Pengambilan Foto Puzzle](docs/images/capture.png)
 *Pengambilan foto wajah pemain menggunakan gestur tangan mengepal.*
 
 Sebelum puzzle dimulai pada setiap stage, pemain mengambil foto wajah atau objek yang akan dipotong menjadi kepingan-kepingan puzzle. 
