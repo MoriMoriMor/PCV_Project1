@@ -1,290 +1,360 @@
-# PUZZLE CAMS - Webcam Arcade Puzzle Game
-Game sliding puzzle interaktif berbasis Pengolahan Citra dan Visi Komputer (*Computer Vision*). Pemain berinteraksi langsung menggunakan gerakan dan gestur tangan yang ditangkap melalui webcam secara *real-time*.
+# Puzzle Cams
+
+Puzzle Cams adalah permainan *sliding puzzle* interaktif yang dikendalikan menggunakan kamera web (*webcam*) melalui pelacakan warna dan pengenalan gestur tangan secara *real-time*. Pemain berinteraksi dengan permainan secara langsung tanpa menyentuh papan ketik maupun tetikus, mulai dari proses kalibrasi kontrol, pengambilan foto pribadi untuk dijadikan materi puzzle, hingga pengoperasian alat untuk membebaskan kepingan puzzle yang terkunci oleh rintangan (*obstacle*).
 
 ---
 
-## Daftar Isi
-- [Gambaran Proyek](#gambaran-proyek)
-- [Tangkapan Layar Permainan](#tangkapan-layar-permainan)
-- [Alur Permainan (State Machine)](#alur-permainan-state-machine)
-- [Sistem Kontrol & Pelacakan Tangan](#sistem-kontrol--pelacakan-tangan)
-- [Mekanik Puzzle](#mekanik-puzzle)
-- [Sistem Rintangan & Peralatan (Tools)](#sistem-rintangan--peralatan-tools)
-- [Sistem Skor, Nyawa, dan Deadlock](#sistem-skor-nyawa-dan-deadlock)
-- [Teknologi & Dependensi](#teknologi--dependensi)
-- [Struktur Folder Proyek](#struktur-folder-proyek)
-- [Panduan Instalasi & Menjalankan Game](#panduan-instalasi--menjalankan-game)
-- [Catatan Teknis & Pemecahan Masalah](#catatan-teknis--pemecahan-masalah)
+## 1. Gambaran Umum dan Tujuan Permainan
+
+Tujuan utama dalam Puzzle Cams adalah menata kembali kepingan-kepingan foto yang telah diacak ke dalam susunan matriks 3x3 yang benar (terdiri dari 8 kepingan gambar dan 1 kotak kosong). Permainan dibagi ke dalam 3 tingkatan stage yang menyajikan tantangan berjenjang:
+
+1. **Stage 1:** Tingkat pengacakan dasar dengan rintangan awal berupa semak belukar.
+2. **Stage 2:** Tingkat pengacakan menengah dengan kombinasi rintangan semak belukar dan es beku.
+3. **Stage 3:** Tingkat pengacakan tertinggi di mana seluruh jenis rintangan magis aktif secara dinamis.
+
+Pemain harus mengendalikan kursor di layar menggunakan gerakan tangan, menggeser kepingan puzzle yang sah, serta mengambil peralatan (*tools*) pembebas untuk membersihkan rintangan sebelum papan permainan mengalami kebuntuan (*deadlock*).
 
 ---
 
-## Gambaran Proyek
+## 2. Alur Permainan
 
-PUZZLE CAMS menggabungkan mekanisme klasik *sliding puzzle* 3x3 dengan kontrol tanpa sentuh (*touchless gesture control*). Game mengolah aliran *frame* video kamera secara langsung untuk melacak koordinat tangan pemain, membedakan gestur terbuka vs mengepal, serta menerapkan berbagai teknik pemrosesan citra digital (PCV) sebagai bagian integral dari mekanik rintangan visual.
+Permainan Puzzle Cams berjalan melalui rangkaian tahapan yang berurutan, mulai dari menu pembuka hingga layar akhir permainan.
 
-Seluruh logika permainan, pelacakan citra, antarmuka grafis (UI), dan visualisasi rintangan dirancang dalam satu arsitektur terintegrasi di file utama [puzzle_cams.py](file:///c:/Users/USER/Documents/game%20pcv/puzzle_cams.py).
+### 2.1. Main Menu
+
+![Tampilan Main Menu Puzzle Cams](docs/images/main_menu.png)
+*Tampilan awal permainan dengan opsi tombol interaktif.*
+
+Layar Main Menu menyambut pemain dengan latar belakang kastil arkade dan dua tombol pilihan utama:
+- **MAIN:** Memulai rangkaian permainan baru yang akan mengarahkan pemain ke tahap kalibrasi warna.
+- **KELUAR:** Menutup dan menghentikan aplikasi permainan.
+
+Pemain dapat memilih menu menggunakan klik tetikus atau menekan tombol `[SPACE]` pada papan ketik untuk langsung beralih ke tahap kalibrasi.
+
+### 2.2. Calibration (Kalibrasi Warna Kursor)
+
+![Tampilan Kalibrasi Warna Kursor](docs/images/calibration.png)
+*Proses kalibrasi warna tangan atau objek penanda kursor.*
+
+Tahap kalibrasi bertujuan mengunci profil warna tangan pemain agar kursor dapat digerakkan secara stabil. 
+
+Pemain menempatkan telapak tangan (atau objek berwarna seperti sarung tangan) tepat di dalam kotak kuning *Region of Interest* (ROI) berukuran 180x180 piksel di tengah layar, kemudian menekan tombol `[SPACE]`. 
+
+Sistem menjalankan empat fase pembacaan yang ditunjukkan oleh bilah progres visual:
+1. **Menyiapkan (0% – 15%):** Inisialisasi area sensor kamera.
+2. **Membaca warna (15% – 75%):** Mengumpulkan 30 sampel nilai warna pada area ROI.
+3. **Mengkalibrasi warna (75% – 95%):** Menghitung batas toleransi ruang warna dan ukuran referensi tangan.
+4. **Kalibrasi selesai (100%):** Ditandai dengan warna hijau pada bilah progres sebelum sistem otomatis berpindah ke tahap pengambilan foto.
+
+Jika objek terlalu gelap atau warna tidak memenuhi syarat kestabilan, layar menampilkan status kegagalan dan pemain dapat menekan `[SPACE]` untuk mengulang pembacaan.
+
+### 2.3. Capture (Pengambilan Foto Puzzle)
+
+![Tampilan Pengambilan Foto Puzzle](docs/images/capture.png)
+*Pengambilan foto wajah pemain menggunakan gestur tangan mengepal.*
+
+Sebelum puzzle dimulai pada setiap stage, pemain mengambil foto wajah atau objek yang akan dipotong menjadi kepingan-kepingan puzzle. 
+
+Pemain memosisikan diri di dalam kotak panduan bujursangkar 400x400 piksel di layar, lalu **mengepalkan tangan selama 1.5 detik** (atau menekan tombol `[SPACE]`). Tindakan ini memicu indikator pengisian hijau dan hitung mundur 3 detik. Saat hitungan berakhir, efek kilatan blitz kamera (*white flash*) muncul, dan area dalam bingkai dipotong menjadi citra berukuran 450x450 piksel untuk dibagikan ke dalam 9 kepingan puzzle (ukuran 150x150 piksel per keping).
+
+### 2.4. Gameplay (Permainan Aktif)
+
+![Tampilan Gameplay Aktif Stage 1](docs/images/gameplay_stage1.png)
+*Layar permainan aktif pada Stage 1 menampilkan papan puzzle, rak peralatan, dan indikator status.*
+
+Layar gameplay memuat seluruh elemen aktif permainan:
+- **Bilah Status Atas (HUD):** Menampilkan nomor stage saat ini (`STAGE 1/3`), judul game, sisa nyawa (3 lambang hati), dan pencatat waktu permainan (*timer*).
+- **Papan Puzzle Tengah:** Bidang berbingkai batu yang memuat 8 kepingan gambar dan 1 kotak kosong.
+- **Rak Peralatan Samping:** Dua slot di sisi kiri (Pisau dan Obor) serta dua slot di sisi kanan (Lentera dan Kipas). Slot yang belum aktif pada stage tertentu ditandai dengan status `TERKUNCI`.
+- **Kamera Mini (PiP):** Terletak di pojok kiri bawah, menampilkan umpan langsung kamera beserta deteksi kontur tangan hijau dan label status gestur (`KEPAL (FIST)` atau `BUKA (OPEN)`).
+- **Teks Skor:** Ditampilkan secara bersih di pojok kanan bawah layar (`SKOR: 00050`), memanfaatkan ruang kosong agar tidak menutupi papan permainan.
+
+### 2.5. Stage Completed (Penyelesaian Stage)
+
+![Tampilan Stage Selesai](docs/images/stage_completed.png)
+*Layar penyelesaian stage yang memperlihatkan foto utuh puzzle dan akumulasi skor.*
+
+Kondisi ini tercapai ketika pemain berhasil menyusun seluruh kepingan puzzle kembali ke posisi sempurna. Layar menampilkan:
+- Teks konfirmasi hijau `STAGE X SELESAI!`.
+- Gambar foto utuh tanpa potongan kepingan di tengah bingkai batu.
+- Total akumulasi skor yang telah diperoleh pemain.
+- Hitung mundur 3 detik sebelum otomatis melanjutkan ke tahap berikutnya (pemain dapat menekan tombol `[N]` untuk langsung melewati jeda).
+
+Jika pemain menyelesaikan Stage 1 atau Stage 2, permainan berpindah kembali ke tahap Capture untuk mengambil foto baru pada stage berikutnya. Namun jika yang diselesaikan adalah Stage 3, permainan berpindah ke kondisi Game Completed.
+
+### 2.6. Deadlock (Kebuntuan Papan)
+
+![Tampilan Kondisi Deadlock](docs/images/deadlock.png)
+*Kondisi deadlock yang ditandai dengan kilatan layar merah dan pemotongan nyawa.*
+
+Deadlock terjadi apabila papan puzzle mengalami kebuntuan total akibat kepingan yang terkunci oleh rintangan permanen. Saat kondisi ini terdeteksi:
+- Layar berkedip merah terang selama 0.5 detik.
+- Nyawa pemain berkurang 1 hati.
+- Skor pemain dipotong penalti sebesar 200 poin.
+- Seluruh rintangan yang ada di papan langsung dihapus secara darurat.
+- **Susunan kepingan puzzle TIDAK di-reset**, sehingga pemain dapat langsung melanjutkan penyusunan dari posisi terakhir tanpa kehilangan kemajuan yang sudah dicapai.
+
+### 2.7. Game Over (Kegagalan Permainan)
+
+![Tampilan Game Over](docs/images/game_over.png)
+*Layar kegagalan permainan dengan efek kuantisasi warna citra.*
+
+Game Over terjadi saat seluruh 3 nyawa pemain habis akibat mengalami kebuntuan berulang kali. Pada layar ini:
+- Foto pemain ditampilkan dengan distorsi kuantisasi warna retro 3-bit berbingkai merah.
+- Ditampilkan perolehan `SKOR AKHIR` serta tingkat stage terakhir yang dicapai.
+- Tersedia tiga tombol navigasi:
+  - **MAIN LAGI:** Mereset skor dan nyawa, lalu mengulang permainan dari tahap kalibrasi.
+  - **MENU UTAMA:** Kembali ke layar awal permainan.
+  - **KELUAR GAME:** Menutup aplikasi.
+
+### 2.8. Game Completed (Kemenangan Permainan)
+
+![Tampilan Kemenangan Game Completed](docs/images/game_completed.png)
+*Layar kemenangan mutlak setelah menyelesaikan Stage 3.*
+
+Kondisi Game Completed dicapai apabila pemain berhasil menyelesaikan seluruh rangkaian hingga Stage 3. Pada layar ini:
+- Foto pemain ditampilkan jernih dengan bingkai emas berornamen.
+- Diberikan penilaian peringkat (*Rank*) berdasarkan performa skor akhir:
+  - **RANK S:** Skor akhir $\ge 2600$ poin.
+  - **RANK A:** Skor akhir $\ge 1800$ poin.
+  - **RANK B:** Skor akhir $< 1800$ poin.
+- Tersedia tombol navigasi yang sama dengan layar Game Over (**MAIN LAGI**, **MENU UTAMA**, dan **KELUAR GAME**).
 
 ---
 
-## Tangkapan Layar Permainan
+## 3. Sistem Kamera, Capture, dan Kontrol
 
-| Menu Utama | Kalibrasi Warna Tangan |
-| :---: | :---: |
-| ![Menu Utama](docs/images/main_menu.png) | ![Kalibrasi Warna](docs/images/calibration.png) |
-| *Tampilan awal game dan navigasi utama* | *Proses pembacaan sampel warna pada kotak ROI* |
+Puzzle Cams memanfaatkan pemrosesan citra kamera secara langsung sebagai penggerak antarmuka permainan.
 
-| Pengambilan Foto (Pose) | Tampilan Gameplay Aktif |
-| :---: | :---: |
-| ![Pengambilan Foto](docs/images/capture.png) | ![Gameplay Aktif](docs/images/gameplay.png) |
-| *Jepret foto wajah/objek dengan mengepalkan tangan* | *Papan puzzle 3x3, panel rintangan, dan status HUD* |
+### 3.1. Peran Kamera dan Akuisisi Input
+Kamera menangkap aliran *frame* video secara *real-time*. Citra kamera langsung dibalik secara horizontal (*horizontal flip*) untuk menciptakan efek cermin (*mirroring*), sehingga pergerakan tangan pemain ke arah kanan fisik akan menggerakkan kursor ke kanan layar secara alami.
 
-| Animasi Aksi Peralatan (*Tool Action*) |
-| :---: |
-| ![Animasi Alat](docs/images/tool_action.png) |
-| *Efek ayunan dinamis saat membersihkan rintangan pada tile* |
+### 3.2. Deteksi Warna HSV dan Morfologi
+Pelacakan tangan beroperasi pada ruang warna HSV (*Hue, Saturation, Value*) untuk memisahkan rona warna dari intensitas cahaya ruangan:
+- **Hue Wrap-Around:** Rata-rata sudut Hue dihitung secara sirkular. Jika rentang warna tangan melintasi batas siklus $0^\circ$ atau $180^\circ$ (umum terjadi pada rona kulit atau warna merah), sistem menggabungkan dua rentang segmentasi terpisah menggunakan operasi logika *OR*.
+- **Pembersihan Masker Citra:** Masker biner hasil segmentasi dibersihkan menggunakan operasi morfologi:
+  - *Opening* (kernel elips 5x5) untuk melenyapkan bintik-bintik *noise* kecil.
+  - *Closing* (kernel elips 7x7) untuk menutup celah dan lubang di dalam kontur tangan.
 
----
+### 3.3. Normalisasi Ruang Kerja (Active Margin)
+Untuk memastikan pemain dapat menjangkau seluruh sudut layar permainan (1280x720 piksel) tanpa harus meregangkan tangan ke tepi fisik lensa kamera, sistem menerapkan margin aktif sebesar **18%** pada batas horizontal dan vertikal:
+- Ruang gerak efektif kamera dibatasi pada 64% area tengah.
+- Titik pusat massa (*centroid*) kontur tangan di dalam zona tengah dipetakan secara proporsional ke koordinat canvas $[0, 1280]$ dan $[0, 720]$.
+- Pergerakan kursor dihaluskan menggunakan interpolasi *moving average* adaptif ($\alpha = 0.40$ untuk pergeseran mikro dan $\alpha = 0.70$ untuk pergeseran cepat).
 
-## Alur Permainan (State Machine)
-
-Permainan dikelola oleh mesin status (*finite state machine*) yang berpindah secara berurutan:
-
-```
-[ Menu Utama ] ──(Pilih Main / [SPACE])──> [ Kalibrasi Warna ]
-                                                    │
-                                            (Berhasil 100%)
-                                                    │
-                                                    ▼
-[ Permainan (Playing) ] <──(Jepret Foto)── [ Pengambilan Foto ]
-       │          │
- (Selesai Stage)  (Nyawa Habis)
-       │          │
-       ▼          ▼
-[ Stage Clear ] [ Game Over ]
-       │          │
- (Lanjut / [N])   (Coba Lagi / Menu)
-       │
- (Stage 3 Selesai)
-       ▼
- [ Kemenangan ]
-```
-
-1. **`STATE_MAIN_MENU` (Menu Utama)**  
-   Menampilkan latar belakang kastil arkade, tombol interaktif **MAIN** dan **KELUAR**, serta mendeteksi masukan mouse atau keyboard.
-2. **`STATE_CALIBRATION` (Kalibrasi Warna Tangan)**  
-   Pemain menempatkan tangan atau objek penanda di kotak ROI (*Region of Interest*) berukuran 180x180 piksel di tengah layar. Menekan tombol `[SPACE]` akan memulai pembacaan 30 sampel warna HSV dengan indikator *progress bar* bertahap.
-3. **`STATE_CAPTURE` (Pengambilan Foto Puzzle)**  
-   Pemain berpose di dalam bingkai panduan 400x400 piksel. Pemain mengepalkan tangan selama 1.5 detik (atau menekan `[SPACE]`) untuk memicu hitung mundur 3 detik. Saat hitungan selesai, efek kilatan blitz (*white flash*) muncul dan foto dipotong menjadi ukuran 450x450 piksel untuk dijadikan gambar kepingan puzzle.
-4. **`STATE_PLAYING` (Gameplay Aktif)**  
-   Sesi permainan utama: menggeser kepingan puzzle, memantau rintangan yang muncul di atas kepingan yang lama tidak disentuh (*idle*), mengambil peralatan di rak kiri/kanan, dan membebaskan kepingan yang terkunci.
-5. **`STATE_STAGE_CLEAR` (Stage Selesai)**  
-   Ditampilkan setelah pemain berhasil menyusun puzzle kembali ke urutan semula (0 sampai 8). Menampilkan foto utuh, perolehan skor, dan jeda 3 detik sebelum melanjutkan ke stage berikutnya.
-6. **`STATE_VICTORY` & `STATE_GAME_OVER` (Layar Akhir)**  
-   - **Kemenangan (Stage 3 Selesai):** Menampilkan skor total dan evaluasi peringkat (*Rank S* untuk skor $\ge 2600$, *Rank A* untuk skor $\ge 1800$, dan *Rank B* untuk skor lainnya).  
-   - **Game Over (Nyawa Habis):** Menerapkan filter kuantisasi bit-depth 3-bit pada foto pemain untuk menghasilkan efek grafis retro terdistorsi. Tersedia tombol navigasi **MAIN LAGI**, **MENU UTAMA**, dan **KELUAR GAME**.
-
----
-
-## Sistem Kontrol & Pelacakan Tangan
-
-### 1. Segmentasi Warna HSV & Penanganan Batas Melingkar (*Hue Wrap-Around*)
-Sistem membaca warna kursor dari ruang warna HSV (*Hue, Saturation, Value*) untuk memisahkan komponen warna dari fluktuasi intensitas cahaya:
-- Rata-rata Hue dihitung menggunakan rumus sirkular trigonometri:
-  $$\bar{\theta} = \text{atan2}\left(\frac{1}{N}\sum \sin(\theta_i),\; \frac{1}{N}\sum \cos(\theta_i)\right)$$
-- Jika rentang deviasi Hue melewati batas $0^\circ$ atau $180^\circ$ (terutama untuk spektrum warna kulit atau warna merah), sistem secara otomatis mengaktifkan segmentasi ganda (*Hue Wrap-Around*) dengan menggabungkan dua rentang `cv2.inRange` menggunakan operasi logika `cv2.bitwise_or`.
-- Masker biner dibersihkan dari *noise* menggunakan operasi morfologi:
-  - **Opening** (kernel elips 5x5) untuk membuang bintik-bintik putih kecil (*salt-noise*).
-  - **Closing** (kernel elips 7x7) untuk menutup celah dan lubang kecil di dalam area kontur tangan.
-
-### 2. Normalisasi Ruang Kerja (*Active Margin*)
-Agar tangan pemain tidak perlu meregang hingga ke tepi sudut bingkai webcam fisik untuk mencapai pojok layar (1280x720 piksel), sistem menerapkan margin aktif sebesar 18%:
-- `CAMERA_MARGIN_X = 0.18` (18% batas kiri dan kanan)
-- `CAMERA_MARGIN_Y = 0.18` (18% batas atas dan bawah)
-- Koordinat centroid tangan di dalam zona tengah (64% area efektif) dipetakan secara proporsional ke rentang resolusi penuh layar game $[0, 1280]$ dan $[0, 720]$.
-- Pergerakan kursor dihaluskan dengan *smoothing moving-average* adaptif: bobot $\alpha = 0.40$ untuk pergeseran mikro dan $\alpha = 0.70$ untuk gerakan cepat.
-
-### 3. Klasifikasi Gestur (Tangan Terbuka vs Mengepal)
-Sistem membedakan pose tangan menggunakan kombinasi tiga parameter geometris kontur citra:
-1. **Solidity:** Rasio luas kontur terhadap luas *Convex Hull* ($\text{Area} / \text{ConvexArea}$). Tangan mengepal memiliki tepi cembung yang padat sehingga nilai solidity mendekati 1.0.
+### 3.4. Klasifikasi Gestur Tangan
+Sistem mengenali dua bentuk pose tangan berdasarkan analisis bentuk geometri kontur citra:
+1. **Solidity:** Rasio perbandingan luas area kontur terhadap luas *Convex Hull* ($\text{Area} / \text{ConvexArea}$). Tangan mengepal memiliki tepi yang rapat dan cembung dengan nilai *solidity* tinggi.
 2. **Circularity:** Derajat kebulatan kontur ($4\pi \times \text{Area} / \text{Keliling}^2$).
-3. **Area Ratio:** Perbandingan luas kontur saat ini terhadap luas referensi saat kalibrasi ($\text{Area} / \text{RefArea}$).
+3. **Area Ratio:** Rasio luas kontur saat ini dibandingkan dengan luas tangan referensi saat kalibrasi ($\text{Area} / \text{RefArea}$).
 
-Skor kepal dihitung melalui pembobotan:
+Skor kepal (*FistScore*) dihitung dengan persamaan pembobotan:
 $$\text{FistScore} = 0.40 \times \text{Circularity} + 0.35 \times \text{Solidity} + 0.25 \times \max(0, 1.0 - \text{AreaRatio})$$
 
-Status **Kepal (*Fist*)** dikonfirmasi jika:
-- $\text{FistScore} > 0.46$, ATAU
-- $\text{Solidity} > 0.88$ dan $\text{AreaRatio} < 0.75$, ATAU
-- $\text{AreaRatio} < 0.50$ (penyusutan ukuran signifikan akibat jari tertekuk ke dalam).
+Status **Tangan Mengepal (*Fist*)** diaktifkan jika:
+- $\text{FistScore} > 0.46$, atau
+- $\text{Solidity} > 0.88$ dan $\text{AreaRatio} < 0.75$, atau
+- $\text{AreaRatio} < 0.50$ (penyusutan ukuran akibat jari ditekuk).
 
-Konfirmasi membutuhkan minimal 2 frame berturut-turut untuk mencegah kedipan (*jitter*).
+Di luar kondisi tersebut, sistem menetapkan status sebagai **Tangan Terbuka (*Open Hand*)**. Perubahan status membutuhkan konfirmasi 2 frame berurutan untuk mencegah kedipan tak sengaja.
 
-### 4. Durasi Tahan Interaksi (*Hold Durations*) & Auto-Drop
-- **Menggeser Kepingan Puzzle:** Arahkan kursor ke kepingan yang bersebelahan dengan kotak kosong, lalu kepalkan tangan selama **0.25 detik** (`HOLD_TIME_SLIDE_GRAB`).
-- **Mengambil / Melepas Peralatan:** Arahkan kursor ke slot peralatan di panel samping, lalu kepalkan tangan selama **0.35 detik** (`HOLD_TIME_EQUIP`).
-- **Membersihkan Rintangan:** Arahkan kursor yang sedang memegang alat yang cocok ke atas kepingan yang terkunci rintangan, lalu kepalkan tangan selama **0.55 detik** (`HOLD_TIME_CLEAR`).
-- **Auto-Drop Alat:** Jika pemain membuka telapak tangan selama $\ge$ **0.30 detik** (`AUTO_DROP_OPEN_TIME`), alat yang sedang dipegang otomatis terlepas kembali ke rak, sehingga pemain dapat langsung melanjutkan menggeser puzzle.
+### 3.5. Durasi Penahanan Aksi (Hold Timers)
+- **Menggeser Kepingan:** Kursor berada di atas kepingan sah dan mengepalkan tangan selama **0.25 detik**.
+- **Mengambil Peralatan:** Kursor berada di panel alat dan mengepalkan tangan selama **0.35 detik**.
+- **Membersihkan Rintangan:** Kursor memegang alat yang cocok di atas kepingan terkunci dan mengepalkan tangan selama **0.55 detik**.
+- **Pelepasan Otomatis (*Auto-Drop*):** Jika pemain membuka telapak tangan selama $\ge$ **0.30 detik**, alat yang sedang dipegang otomatis terlepas kembali ke rak.
 
-### 5. Kontrol Cadangan (*Mouse Fallback*) & Tombol Keyboard
-Game menyediakan kendali alternatif mouse dan tombol pintas keyboard:
-- **Mouse Fallback:** Posisi kursor mengikuti kursor mouse. Menahan tombol **Klik Kiri Mouse** berfungsi menggantikan gestur mengepalkan tangan.
-- **Tombol Pintas Keyboard:**
-  | Tombol | Fungsi |
-  | :---: | :--- |
-  | `[SPACE]` | Memulai kalibrasi di layar Menu / Memulai pembacaan kalibrasi / Jepret foto instan |
-  | `[ESC]` | Kembali ke Menu Utama / Keluar dari game jika berada di Menu Utama |
-  | `[R]` | *Restart* permainan kembali ke kalibrasi Stage 1 |
-  | `[M]` | Kembali ke Menu Utama dari layar Kemenangan atau Game Over |
-  | `[N]` | *Instant Stage Clear* (melewati stage saat bermain / mempercepat jeda transisi) |
-  | `[1]` – `[4]` | Memilih peralatan secara instan (1: Pisau, 2: Obor, 3: Lentera, 4: Kipas) |
-  | `[0]` / `[Q]` | Melepaskan peralatan yang sedang dipegang |
+### 3.6. Kendali Cadangan (Mouse & Keyboard)
+- **Mouse Fallback:** Posisi kursor game dapat digerakkan menggunakan kursor tetikus. Menahan tombol **Klik Kiri** berfungsi menggantikan gestur tangan mengepal.
+- **Pintasan Keyboard:**
+  - `[SPACE]`: Memulai kalibrasi / memulai pembacaan / jepret foto instan.
+  - `[ESC]`: Kembali ke Main Menu / keluar dari permainan jika berada di Main Menu.
+  - `[R]`: Merestart permainan kembali ke kalibrasi Stage 1.
+  - `[M]`: Kembali ke Main Menu dari layar Game Over atau Game Completed.
+  - `[N]`: Mempercepat jeda layar atau melompati stage (*Instant Clear*).
+  - `[1]` – `[4]`: Memilih alat secara instan (1: Pisau, 2: Obor, 3: Lentera, 4: Kipas).
+  - `[0]` / `[Q]`: Melepas alat yang sedang dipegang.
 
 ---
 
-## Mekanik Puzzle
+## 4. Mekanik Puzzle
 
-Papan puzzle terdiri dari kisi 3x3 dengan 9 posisi kepingan berukuran 150x150 piksel (total ukuran papan 450x450 piksel). Kepingan dengan nilai indeks 8 dialokasikan sebagai **kotak kosong**.
+Papan permainan Puzzle Cams menggunakan mekanisme *sliding tile puzzle* 3x3 standar dengan total 9 slot:
 
-```
-[ 0 ] [ 1 ] [ 2 ]
-[ 3 ] [ 4 ] [ 5 ]
-[ 6 ] [ 7 ] [ 8: KOSONG ]
-```
+$$\begin{bmatrix}
+0 & 1 & 2 \\
+3 & 4 & 5 \\
+6 & 7 & 8\;(\text{Kosong})
+\end{bmatrix}$$
 
-### Pengacakan Sah (*Legal Moves Shuffle*) & Jaminan 100% Solvable
-Berbeda dari pengacakan permutasi acak yang dapat menghasilkan susunan puzzle matematika ganjil tak terpecahkan (*unsolvable inversion parity*), game ini menggunakan metode **Random Legal Moves**:
-1. Papan dimulai dari kondisi terpecahkan sempurna `[0, 1, 2, ..., 8]`.
-2. Posisi kotak kosong ditukar secara acak hanya dengan kepingan tetangga yang sah (*valid neighbors*).
-3. Pertukaran bolak-balik langsung pada posisi yang sama (*undo move*) dicegah oleh sistem.
-4. Jumlah langkah pengacakan disesuaikan per tingkatan stage:
-   - **Stage 1:** 2 – 3 langkah acak.
-   - **Stage 2:** 4 – 5 langkah acak.
-   - **Stage 3:** 6 – 8 langkah acak.
+- Kepingan nomor **8** dialokasikan sebagai slot kosong (*empty slot*).
+- Setiap kepingan memiliki ukuran 150x150 piksel, tersusun rapi di dalam papan bujursangkar 450x450 piksel.
 
-Dengan metode ini, susunan puzzle dijamin **100% selalu dapat diselesaikan**.
+### Aturan Pergerakan Kepingan
+1. Kepingan hanya dapat digeser ke slot kosong jika posisinya bertetangga secara ortogonal (atas, bawah, kiri, atau kanan) dengan slot kosong tersebut.
+2. Kepingan yang terletak diagonal dari slot kosong tidak dapat dipindahkan.
+3. Kepingan yang sedang terkunci oleh rintangan permanen tidak dapat digeser sampai rintangan tersebut dibersihkan.
+4. Ketika pemain menahan gestur kepal selama 0.25 detik pada kepingan yang memenuhi syarat, posisi kepingan tersebut akan bertukar tempat dengan slot kosong.
 
----
-
-## Sistem Rintangan & Peralatan (Tools)
-
-### 1. Hubungan Rintangan, Peralatan, dan Efek Pengolahan Citra
-
-| Rintangan | Efek Pengolahan Citra (PCV) | Peralatan Pembebas | Efek Visual Peralatan |
-| :--- | :--- | :--- | :--- |
-| **Semak Belukar** (*Bush*) | Deteksi gradien magnitudo **Filter Sobel 3x3** ($G = \sqrt{S_x^2 + S_y^2}$), **Dilasi Morfologi** 2 iterasi untuk menumbuhkan sulur, dan pewarnaan hijau gelap. | **Pisau** (*Knife*, Slot 1) | Animasi busur tebasan pisau berotasi $-35^\circ \to +45^\circ$ disertai garis tebasan putih (*slash trail*). |
-| **Es Beku** (*Ice*) | Transformasi inversi warna **Look-Up Table (LUT) Negatif 256**, **Median Filter 7x7** untuk menghasilkan tekstur kristal es, dan tinting biru dingin. | **Obor** (*Torch / Hairdryer*, Slot 2) | Animasi mendekat (*reach*) dengan bara api melingkar oranye yang bergetar secara dinamis. |
-| **Kutukan Gelap** (*Dark Curse*) | Transformasi daya non-linear **Gamma 4.0** ($I_{out} = I_{in}^{4.0}$), dikombinasikan dengan gradasi **Vignette Radial** ungu pekat dari sudut tile. | **Lentera** (*Lantern / Flashlight*, Slot 3) | Animasi lentera terangkat ke atas disertai pancaran cincin cahaya (*expanding light halo*) berwarna kuning/sian. |
-| **Kabut Tebal** (*Dense Fog*) | Penghalusan frekuensi spasial rendah **Gaussian Blur 15x15**, dilapisi *overlay* kabut putih susu dengan transparansi 55%. | **Kipas** (*Fan / Sponge*, Slot 4) | Animasi kipas mengibas kiri-kanan secara sinusoidal berotasi $\pm 30^\circ$ disertai hembusan angin busur. |
-
-### 2. Progresi Rintangan per Stage
-- **Stage 1:** Hanya rintangan *Semak Belukar*. Peralatan yang aktif: *Pisau*.
-- **Stage 2:** Rintangan *Semak Belukar* dan *Es Beku*. Peralatan yang aktif: *Pisau* dan *Obor*.
-- **Stage 3:** Seluruh 4 rintangan dan 4 peralatan aktif secara bersamaan.
-
-### 3. Siklus Rintangan Dua Tahap (*Two-Stage Obstacles*)
-Rintangan muncul secara berkala setiap **15.0 detik** (`OBSTACLE_SPAWN_INTERVAL`). Target dipilih secara otomatis pada kepingan yang paling lama tidak disentuh pemain (*most idle tile*).
-1. **Tahap 1 (`FORMING` / Pembentukan - 1.5 Detik):**  
-   - Efek visual rintangan bergradasi perlahan dari 0% ke 100% menggunakan *alpha blending* waktu nyata.
-   - Garis batas tile berdenyut (*pulsing*) oranye kemerahan dan menampilkan teks status `"MEMBENTUK..."`.
-   - **Kepingan belum terkunci:** Pemain masih dapat menggeser kepingan ini sebelum pembentukan selesai.
-2. **Tahap 2 (`PERMANENT` / Mengeras):**  
-   - Rintangan menutupi kepingan secara penuh dan menampilkan label nama rintangan.
-   - **Kepingan terkunci:** Kepingan tidak dapat digeser oleh pemain sampai dibersihkan menggunakan alat yang sesuai.
+### Pengacakan Sah (100% Solvable Shuffle)
+Permainan menjamin bahwa susunan puzzle selalu dapat diselesaikan:
+- Pengacakan tidak dilakukan melalui permutasi acak matematika yang berpotensi menghasilkan konfigurasi ganjil tak terpecahkan.
+- Pengacakan menggunakan metode **Random Legal Moves**, yaitu dengan mensimulasikan langkah geser sah berturut-turut dari kondisi terpecahkan sempurna:
+  - **Stage 1:** 2 sampai 3 langkah acak.
+  - **Stage 2:** 4 sampai 5 langkah acak.
+  - **Stage 3:** 6 sampai 8 langkah acak.
+- Sistem mencegah kepingan bergerak bolak-balik langsung ke posisi sebelumnya selama proses pengacakan.
+- Kondisi kemenangan stage tercapai seketika susunan kepingan kembali ke urutan identitas `[0, 1, 2, 3, 4, 5, 6, 7, 8]`.
 
 ---
 
-## Sistem Skor, Nyawa, dan Deadlock
+## 5. Sistem Skor dan Progres Permainan
 
-### 1. Sistem Nyawa & Skor
-- Pemain dibekali **3 nyawa** (ditampilkan dengan ikon hati di HUD kanan atas).
-- **Penambahan Skor:**
-  - Membersihkan 1 rintangan dengan peralatan: **+50 poin**.
+Skor pemain diakumulasikan sepanjang perjalanan dari Stage 1 hingga Stage 3:
+
+### Perolehan dan Pengurangan Skor
+- **Membersihkan Rintangan:** Setiap kali pemain berhasil melenyapkan satu rintangan menggunakan alat yang cocok, pemain memperoleh **+50 poin**.
+- **Menyelesaikan Stage (Base Points):**
   - Menyelesaikan Stage 1: **+300 poin**.
   - Menyelesaikan Stage 2: **+600 poin**.
   - Menyelesaikan Stage 3: **+900 poin**.
-  - **Bonus Kecepatan (Speed Bonus):** $\max(0, (90 - \text{waktu dalam detik}) \times 10)$.
+- **Bonus Kecepatan (Speed Bonus):**
+  Pemain yang menyelesaikan puzzle dalam waktu kurang dari 90 detik mendapatkan bonus tambahan:
+  $$\text{Bonus Waktu} = \max\left(0,\; (90 - \text{waktu dalam detik}) \times 10\right)$$
+- **Penalti Deadlock:**
+  Terjadinya kebuntuan memotong skor sebesar **-200 poin** (skor minimal bernilai 0).
 
-### 2. Mekanisme Kebuntuan (*Deadlock*)
-Kondisi kebuntuan (*deadlock*) terpicu secara otomatis jika:
-1. Seluruh kepingan tetangga yang berada di sekeliling kotak kosong berstatus rintangan `PERMANENT` (tidak ada kepingan yang dapat digeser sama sekali), ATAU
-2. Terdapat $\ge 6$ kepingan pada papan yang terkunci oleh rintangan permanen secara bersamaan.
-
-**Konsekuensi Terjadinya Deadlock:**
-- Layar permainan berkedip merah terang selama 0.5 detik.
-- Nyawa pemain berkurang 1.
-- Penalti skor: **-200 poin** (skor tidak akan turun di bawah 0).
-- **Pembersihan Darurat:** Seluruh rintangan di papan langsung dihapus secara otomatis, **tanpa me-reset posisi susunan kepingan puzzle**, sehingga pemain dapat langsung melanjutkan permainan tanpa kehilangan progres penyusunan.
-- Permainan berakhir (*Game Over*) jika seluruh 3 nyawa habis.
+Jika pemain memilih "MAIN LAGI" setelah Game Over atau Game Completed, skor di-reset kembali ke nilai 0 untuk memulai sesi baru.
 
 ---
 
-## Teknologi & Dependensi
+## 6. Obstacle dan Cara Kerjanya
 
-Proyek ini dibangun menggunakan Python dan pustaka pengolahan citra standar:
-- **Python 3.8+**
-- **OpenCV (`opencv-python`):** Akuisisi frame webcam, konversi ruang warna HSV/BGR/Gray, filter Sobel, Gaussian blur, Median blur, operasi morfologi opening/closing/dilasi, ekstraksi kontur dan momen spasial, manipulasi matriks affine rotasi, dan overlay grafis GUI.
-- **NumPy (`numpy`):** Operasi array citra multidimensi, pembuatan tabel Look-Up Table (LUT), perhitungan statistik piksel (mean sirkular, standar deviasi sirkular, dan persentil).
-- **Pillow (`PIL`):** Generator aset cadangan prosedural berbasis tipografi font jika file grafis eksternal perlu dibuat ulang otomatis.
+Rintangan (*obstacle*) adalah gangguan magis visual yang muncul di atas kepingan puzzle dan membatasi pergerakan kepingan.
 
----
-
-## Struktur Folder Proyek
-
-```
-game pcv/
-├── assets/
-│   ├── bg gameplay.png                     # Gambar latar belakang saat permainan aktif
-│   ├── bg kalibrasi dan tangkap gambar.png # Gambar latar belakang layar kalibrasi & capture
-│   ├── bg main menu.png                    # Gambar latar belakang layar Menu Utama
-│   ├── flashlight.png                      # Ikon peralatan Lentera (Slot 3)
-│   ├── frame.png                           # Bingkai batu hiasan di sekeliling papan puzzle
-│   ├── hairdryer.png                       # Ikon peralatan Obor (Slot 2)
-│   ├── hand_fist.png                       # Ikon kursor mode mengepal
-│   ├── hand_open.png                       # Ikon kursor mode tangan terbuka
-│   ├── heart.png                           # Ikon indikator nyawa di HUD
-│   ├── knife.png                           # Ikon peralatan Pisau (Slot 1)
-│   └── sponge.png                          # Ikon peralatan Kipas (Slot 4)
-├── docs/
-│   └── images/
-│       ├── calibration.png                 # Tangkapan layar antarmuka kalibrasi warna
-│       ├── capture.png                     # Tangkapan layar antarmuka pengambilan foto
-│       ├── gameplay.png                    # Tangkapan layar antarmuka permainan aktif
-│       ├── main_menu.png                   # Tangkapan layar antarmuka Menu Utama
-│       └── tool_action.png                 # Tangkapan layar animasi tebasan alat pisau
-├── puzzle_cams.py                          # Kode sumber utama aplikasi game
-└── README.md                               # Dokumentasi lengkap proyek
-```
+### Mekanisme Kemunculan dan Siklus Dua Tahap
+- **Interval Kemunculan:** Rintangan baru muncul setiap **15.0 detik**.
+- **Penentuan Target:** Sistem memilih kepingan yang paling lama tidak disentuh atau tidak diarahkan kursor (*most idle tile*). Mengarahkan kursor ke atas suatu kepingan akan mereset pencatat waktu *idle* kepingan tersebut.
+- **Siklus 2 Tahap:**
+  1. **Tahap 1 (`FORMING` / 1.5 Detik):**  
+     Efek visual rintangan memudar masuk secara bertahap dari transparansi 0% hingga 100%. Garis batas kepingan berdenyut oranye-merah dan menampilkan status peringatan `"MEMBENTUK..."`. Pada tahap ini, **kepingan belum terkunci** dan pemain masih dapat menggesernya sebelum mengeras.
+  2. **Tahap 2 (`PERMANENT`):**  
+     Rintangan mengeras sepenuhnya dan menampilkan label nama rintangan. Kepingan **terkunci total** dan tidak dapat digeser sampai pemain membersihkannya menggunakan alat yang sesuai.
 
 ---
 
-## Panduan Instalasi & Menjalankan Game
+### 6.1. Semak Belukar (Bush)
+- **Fungsi:** Menyelubungi kepingan dengan tanaman sulur berduri tebal.
+- **Kemunculan dan Aktivasi:** Aktif sejak **Stage 1, 2, dan 3**.
+- **Cara Kerja:** Menerapkan filter pendeteksi gradien tepi Sobel 3x3, dilasi morfologi 2 iterasi untuk mempertebal cabang sulur, dan pewarnaan hijau gelap.
+- **Dampak terhadap Pemain:** Mengunci kepingan pada tahap permanen. Jika semak mengepung kotak kosong, langkah permainan akan terhenti.
+- **Cara Mengatasi:** Gunakan alat **Pisau** (Slot 1).
+- **Kondisi Selesai:** Tahan pisau di atas semak selama 0.55 detik untuk memicu animasi tebasan dan menghapus semak belukar (+50 skor).
+- **Screenshot:** Terlihat jelas pada layar Gameplay (`docs/images/gameplay_stage1.png`) dan Deadlock (`docs/images/deadlock.png`).
 
-### 1. Pasang Dependensi
-Pastikan Python sudah terpasang di komputer Anda. Buka terminal atau Command Prompt, lalu instal paket yang dibutuhkan:
+### 6.2. Es Beku (Ice)
+- **Fungsi:** Membekukan kepingan menjadi lapisan es kristal padat.
+- **Kemunculan dan Aktivasi:** Mulai muncul pada **Stage 2 dan 3**.
+- **Cara Kerja:** Menginversi warna citra melalui Look-Up Table (LUT) negatif, menghaluskan tekstur menggunakan filter non-linear Median Blur 7x7, dan menambahkan tinting warna biru dingin.
+- **Dampak terhadap Pemain:** Kepingan membeku dan tidak dapat digeser.
+- **Cara Mengatasi:** Gunakan alat **Obor** (Slot 2).
+- **Kondisi Selesai:** Tahan obor di atas es selama 0.55 detik untuk mencairkan es (+50 skor).
+- **Screenshot:** Terlihat pada layar Deadlock (`docs/images/deadlock.png`).
 
-```bash
-pip install opencv-python numpy pillow
-```
+### 6.3. Kutukan Gelap (Dark Curse)
+- **Fungsi:** Menyelimuti kepingan dengan kegelapan pekat yang menghalangi pandangan kepingan.
+- **Kemunculan dan Aktivasi:** Mulai muncul pada **Stage 3**.
+- **Cara Kerja:** Menerapkan transformasi kontras non-linear Gamma 4.0 dan gradasi *vignette* lingkaran ungu gelap dari sudut kepingan.
+- **Dampak terhadap Pemain:** Kepingan terkunci dan detail gambar di dalamnya sulit dikenali karena sangat gelap.
+- **Cara Mengatasi:** Gunakan alat **Lentera** (Slot 3).
+- **Kondisi Selesai:** Tahan lentera di atas kepingan selama 0.55 detik untuk memancarkan cahaya dan mengusir kegelapan (+50 skor).
 
-### 2. Jalankan Permainan
-Eksekusi file utama program:
-
-```bash
-python puzzle_cams.py
-```
+### 6.4. Kabut Tebal (Dense Fog)
+- **Fungsi:** Menutup permukaan kepingan dengan kabut putih pekat.
+- **Kemunculan dan Aktivasi:** Mulai muncul pada **Stage 3**.
+- **Cara Kerja:** Menerapkan filter Gaussian Blur 15x15 untuk mengaburkan frekuensi spasial gambar dan melapisinya dengan hamparan kabut putih susu berkadar 55%.
+- **Dampak terhadap Pemain:** Kepingan terkunci dan gambar menjadi buram total.
+- **Cara Mengatasi:** Gunakan alat **Kipas** (Slot 4).
+- **Kondisi Selesai:** Tahan kipas di atas kabut selama 0.55 detik untuk mengibaskan dan melenyapkan kabut (+50 skor).
 
 ---
 
-## Catatan Teknis & Pemecahan Masalah
+## 7. Tools dan Penggunaannya
 
-1. **Pencahayaan Ruangan saat Kalibrasi Warna:**
-   - Gunakan ruangan dengan pencahayaan yang cukup dan merata. Hindari lampu sorot langsung ke arah lensa kamera yang menimbulkan pantulan cahaya (*glare*).
-   - Pastikan latar belakang di belakang pemain tidak memiliki warna yang identik dengan telapak tangan atau objek yang dikalibrasi.
-   - Posisikan telapak tangan diam di dalam kotak ROI kuning selama 1 – 2 detik hingga bilah progres mencapai 100%.
+Tools adalah peralatan khusus yang ditempatkan pada panel samping layar untuk membebaskan kepingan yang terkena rintangan.
 
-2. **Simulator Kamera Virtual Otomatis (*Fallback Simulator*):**
-   - Jika komputer tidak memiliki webcam fisik, atau webcam sedang dipakai oleh aplikasi lain (seperti Zoom, Teams, atau browser), game tidak akan mengalami *crash*.
-   - Game otomatis mendeteksi ketiadaan kamera dan mengaktifkan **Simulator Kamera Virtual** bawaan, menampilkan target lingkaran warna terkalibrasi yang bergerak secara periodik untuk keperluan pengujian logika.
+### Cara Memperoleh dan Memegang Alat
+- Panel kiri memuat **Pisau** (Slot 1) dan **Obor** (Slot 2).
+- Panel kanan memuat **Lentera** (Slot 3) dan **Kipas** (Slot 4).
+- Pemain mengambil alat dengan mengarahkan kursor ke slot yang aktif lalu mengepalkan tangan selama **0.35 detik**.
+- Alat yang sedang dipegang akan melayang mengikuti kursor pemain dan slot asal menampilkan indikator hijau bertuliskan `DIPEGANG`.
+- Untuk melepaskan alat, pemain cukup membuka telapak tangan selama $\ge$ **0.30 detik** (*Auto-Drop*) atau mengepal kembali di slot asal.
 
-3. **Penggunaan Mode Mouse untuk Pengujian Cepat:**
-   - Jika ingin mendemonstrasikan atau menguji mekanik puzzle tanpa menggunakan kamera fisik, cukup gunakan mouse: gerakkan kursor mouse ke posisi kepingan atau panel alat, lalu tekan dan tahan tombol **Klik Kiri Mouse** untuk mengaktifkan aksi kepal.
+---
+
+### 7.1. Pisau (Knife - Slot 1)
+- **Fungsi:** Membabat dan menebas rintangan Semak Belukar.
+- **Ketersediaan:** Aktif pada **Stage 1, 2, dan 3**.
+- **Cara Penggunaan:** Pegang pisau, arahkan kursor ke kepingan yang tertutup Semak Belukar, lalu kepalkan tangan selama 0.55 detik.
+- **Efek Visual:** Memunculkan animasi tebasan pisau berotasi $-35^\circ \to +45^\circ$ disertai jejak garis putih tebasan (*slash trail*).
+- **Target Pasangan:** Semak Belukar (*Bush*).
+- **Batasan:** Tidak memiliki efek terhadap es, kabut, atau kutukan gelap.
+- **Dampak Skor:** Memberikan +50 poin saat rintangan terpotong.
+
+### 7.2. Obor (Torch - Slot 2)
+- **Fungsi:** Memancarkan panas api untuk melelehkan lapisan Es Beku.
+- **Ketersediaan:** Aktif mulai **Stage 2 dan 3** (berstatus `TERKUNCI` pada Stage 1).
+- **Cara Penggunaan:** Pegang obor, arahkan kursor ke kepingan Es Beku, lalu kepalkan tangan selama 0.55 detik.
+- **Efek Visual:** Memunculkan animasi bara api oranye yang mendekat dan bergetar secara dinamis di atas kepingan es.
+- **Target Pasangan:** Es Beku (*Ice*).
+- **Batasan:** Hanya dapat mencairkan es.
+- **Dampak Skor:** Memberikan +50 poin saat es mencair.
+
+### 7.3. Lentera (Lantern - Slot 3)
+- **Fungsi:** Memancarkan cahaya murni untuk melenyapkan Kutukan Gelap.
+- **Ketersediaan:** Aktif pada **Stage 3** (berstatus `TERKUNCI` pada Stage 1 dan 2).
+- **Cara Penggunaan:** Pegang lentera, arahkan kursor ke kepingan Kutukan Gelap, lalu kepalkan tangan selama 0.55 detik.
+- **Efek Visual:** Memunculkan animasi lentera terangkat ke atas disertai pancaran cincin cahaya kuning/sian yang membesar.
+- **Target Pasangan:** Kutukan Gelap (*Dark Curse*).
+- **Batasan:** Hanya dapat mengusir kegelapan kutukan.
+- **Dampak Skor:** Memberikan +50 poin saat kutukan terangkat.
+
+### 7.4. Kipas (Fan - Slot 4)
+- **Fungsi:** Menghembuskan angin kencang untuk membubarkan Kabut Tebal.
+- **Ketersediaan:** Aktif pada **Stage 3** (berstatus `TERKUNCI` pada Stage 1 dan 2).
+- **Cara Penggunaan:** Pegang kipas, arahkan kursor ke kepingan Kabut Tebal, lalu kepalkan tangan selama 0.55 detik.
+- **Efek Visual:** Memunculkan animasi kipas mengayun kiri-kanan secara sinusoidal $\pm 30^\circ$ disertai hembusan busur angin putih.
+- **Target Pasangan:** Kabut Tebal (*Dense Fog*).
+- **Batasan:** Hanya dapat meniup kabut.
+- **Dampak Skor:** Memberikan +50 poin saat kabut sirna.
+
+---
+
+## 8. Kondisi Stage Completed, Deadlock, Game Over, dan Game Completed
+
+Keempat kondisi ini merangkum situasi kunci dalam progresivitas permainan:
+
+### 8.1. Stage Completed
+- **Pemicu:** Susunan seluruh kepingan puzzle di papan kembali cocok secara sempurna dengan urutan indeks `[0, 1, 2, ..., 8]`.
+- **Dampak Permainan:** Papan permainan terkunci, foto utuh ditampilkan tanpa garis kisi kepingan, dan pemain menerima penambahan skor stage serta bonus kecepatan waktu.
+- **Kelanjutan Permainan:** Sistem menunggu jeda 3 detik (atau ditekan tombol `[N]`). Jika stage yang diselesaikan adalah Stage 1 atau Stage 2, permainan beralih ke tahap Capture untuk mengambil foto baru pada stage berikutnya.
+
+### 8.2. Deadlock
+- **Definisi:** Kondisi kebuntuan papan di mana tidak ada lagi langkah geser yang sah yang dapat dilakukan pemain.
+- **Pemicu Khusus:**
+  1. Seluruh kepingan tetangga di sekeliling kotak kosong berstatus rintangan `PERMANENT` (kotak kosong terisolasi secara total), atau
+  2. Terdapat $\ge 6$ kepingan di papan terkunci oleh rintangan permanen secara bersamaan.
+- **Konsekuensi:** Layar berkedip merah terang selama 0.5 detik, nyawa berkurang 1 hati, skor dipotong 200 poin, dan seluruh rintangan di papan langsung dibersihkan otomatis.
+- **Kelanjutan Permainan:** Posisi susunan kepingan puzzle **TIDAK di-reset**, sehingga pemain tidak kehilangan progres langkah dan dapat langsung melanjutkan permainan dari susunan terakhir. Jika nyawa tersisa masih ada, permainan berlanjut normal; jika nyawa habis, permainan beralih ke Game Over.
+
+### 8.3. Game Over
+- **Definisi:** Kondisi kekalahan total di mana sesi permainan dihentikan karena kegagalan pemain mempertahankan nyawa.
+- **Pemicu:** Jumlah nyawa mencapai angka 0 akibat mengalami deadlock beruntun.
+- **Konsekuensi:** Sesi bermain ditutup, foto pemain ditampilkan dalam distorsi filter kuantisasi 3-bit, dan skor akhir dibekukan.
+- **Pilihan Selanjutnya:** Pemain dapat menekan tombol **MAIN LAGI** (mereset seluruh nilai skor dan nyawa untuk memulai dari kalibrasi Stage 1), **MENU UTAMA** (kembali ke beranda awal), atau **KELUAR GAME**.
+
+### 8.4. Game Completed
+- **Definisi:** Kondisi kemenangan mutlak di mana pemain berhasil menyelesaikan seluruh konten permainan.
+- **Pemicu:** Pemain berhasil menyusun kepingan puzzle pada **Stage 3** hingga selesai sempurna.
+- **Perbedaan dengan Stage Completed:** Tidak melanjutkan ke stage baru maupun tahap capture berikutnya. Sebagai gantinya, sistem mengevaluasi total akumulasi skor akhir dari seluruh stage untuk memberikan lencana peringkat (**Rank S**, **Rank A**, atau **Rank B**).
+- **Pilihan Selanjutnya:** Pemain dapat merayakan kemenangan dan memilih untuk bermain kembali (**MAIN LAGI**), kembali ke beranda (**MENU UTAMA**), atau menutup aplikasi (**KELUAR GAME**).
