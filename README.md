@@ -33,7 +33,7 @@ Pemain dapat memilih menu menggunakan klik tetikus atau menekan tombol `[SPACE]`
 
 ### 2.2. Calibration (Kalibrasi Warna Kursor)
 
-![Tampilan Kalibrasi Warna Kursor](docs/images/calibration.png)
+![Tampilan Kalibrasi Warna Kursor](docs/images/calibration (2).png)
 *Proses kalibrasi warna tangan atau objek penanda kursor.*
 
 Tahap kalibrasi bertujuan mengunci profil warna tangan pemain agar kursor dapat digerakkan secara stabil. 
