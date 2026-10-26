@@ -1,4 +1,3 @@
-
 import os
 import sys
 import time
@@ -8,21 +7,17 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-
-WINDOW_TITLE = "PUZZLE CAMS - Arcade Computer Vision Game"
+WINDOW_TITLE = "PUZZLE CAMS"
 CANVAS_WIDTH = 1280
 CANVAS_HEIGHT = 720
-
 
 GRID_COLS = 3
 GRID_ROWS = 3
 TILE_SIZE = 150
 BOARD_SIZE = GRID_COLS * TILE_SIZE
 
-
 BOARD_X = (CANVAS_WIDTH - BOARD_SIZE) // 2
 BOARD_Y = 185
-
 
 STATE_MAIN_MENU = "STATE_MAIN_MENU"
 STATE_CALIBRATION = "STATE_CALIBRATION"
@@ -32,7 +27,6 @@ STATE_STAGE_CLEAR = "STATE_STAGE_CLEAR"
 STATE_GAME_OVER = "STATE_GAME_OVER"
 STATE_VICTORY = "STATE_VICTORY"
 
-
 CALIB_IDLE = "CALIB_IDLE"
 CALIB_PREPARING = "CALIB_PREPARING"
 CALIB_READING = "CALIB_READING"
@@ -40,21 +34,18 @@ CALIB_CALIBRATING = "CALIB_CALIBRATING"
 CALIB_SUCCESS = "CALIB_SUCCESS"
 CALIB_FAILED = "CALIB_FAILED"
 
-
 STAGE_SHUFFLE_CONFIG = {
     1: (2, 3),
     2: (4, 5),
     3: (6, 8)
 }
 
-
 OBSTACLE_SPAWN_INTERVAL = 15.0
 OBSTACLE_IDLE_LIMIT = 15.0
-
+OBSTACLE_FORM_DURATION = 1.5
 
 CAMERA_MARGIN_X = 0.18
 CAMERA_MARGIN_Y = 0.18
-
 
 OBSTACLE_NONE = 0
 OBSTACLE_BUSH = 1
@@ -70,21 +61,23 @@ OBSTACLE_NAMES = {
     OBSTACLE_FOG: "Kabut Tebal"
 }
 
-
 TOOL_NONE = 0
 TOOL_KNIFE = 1
 TOOL_HAIRDRYER = 2
 TOOL_FLASHLIGHT = 3
 TOOL_SPONGE = 4
 
+TOOL_TORCH = TOOL_HAIRDRYER
+TOOL_LANTERN = TOOL_FLASHLIGHT
+TOOL_FAN = TOOL_SPONGE
+
 TOOL_NAMES = {
     TOOL_NONE: "Kosong",
     TOOL_KNIFE: "Pisau",
-    TOOL_HAIRDRYER: "Hairdryer",
-    TOOL_FLASHLIGHT: "Senter",
-    TOOL_SPONGE: "Spons"
+    TOOL_HAIRDRYER: "Obor",
+    TOOL_FLASHLIGHT: "Lentera",
+    TOOL_SPONGE: "Kipas"
 }
-
 
 TOOL_MATCH = {
     OBSTACLE_BUSH: TOOL_KNIFE,
@@ -93,13 +86,11 @@ TOOL_MATCH = {
     OBSTACLE_FOG: TOOL_SPONGE
 }
 
-
 HOLD_TIME_SLIDE_GRAB = 0.25
 HOLD_TIME_EQUIP = 0.35
-HOLD_TIME_CLEAR = 0.60
+HOLD_TIME_CLEAR = 0.55
 AUTO_DROP_OPEN_TIME = 0.30
 HOLD_TIME_CAPTURE_FIST = 1.5
-
 
 COLOR_BG_DARK = (20, 18, 26)
 COLOR_PANEL_BG = (35, 30, 42)
@@ -110,7 +101,6 @@ COLOR_NEON_RED = (50, 50, 240)
 COLOR_TEXT_WHITE = (245, 245, 250)
 COLOR_TEXT_DIM = (160, 160, 175)
 
-
 ASSET_DIR = "assets"
 ASSET_FILES = {
     "knife.png": os.path.join(ASSET_DIR, "knife.png"),
@@ -120,9 +110,11 @@ ASSET_FILES = {
     "hand_open.png": os.path.join(ASSET_DIR, "hand_open.png"),
     "hand_fist.png": os.path.join(ASSET_DIR, "hand_fist.png"),
     "heart.png": os.path.join(ASSET_DIR, "heart.png"),
-    "frame.png": os.path.join(ASSET_DIR, "frame.png")
+    "frame.png": os.path.join(ASSET_DIR, "frame.png"),
+    "bg_main_menu": os.path.join(ASSET_DIR, "bg main menu.png"),
+    "bg_calibration": os.path.join(ASSET_DIR, "bg kalibrasi dan tangkap gambar.png"),
+    "bg_gameplay": os.path.join(ASSET_DIR, "bg gameplay.png")
 }
-
 
 EMOJI_GLYPHS = {
     "knife.png": "\U0001F52A",
@@ -139,6 +131,7 @@ class AssetManager:
     def __init__(self, asset_dir=ASSET_DIR):
         self.asset_dir = asset_dir
         self.images = {}
+        self.backgrounds = {}
         self.ensure_assets_exist()
         self.load_all_assets()
 
@@ -155,7 +148,7 @@ class AssetManager:
                 font = None
 
         for filename, filepath in ASSET_FILES.items():
-            if not os.path.exists(filepath):
+            if not os.path.exists(filepath) and not filename.startswith("bg_"):
                 if filename == "frame.png":
                     self._create_frame_png(filepath)
                 else:
@@ -195,6 +188,17 @@ class AssetManager:
 
     def load_all_assets(self):
         for name, filepath in ASSET_FILES.items():
+            if name.startswith("bg_"):
+                if os.path.exists(filepath):
+                    raw_bg = cv2.imread(filepath)
+                    if raw_bg is not None:
+                        bg_scaled = cv2.resize(raw_bg, (CANVAS_WIDTH, CANVAS_HEIGHT), interpolation=cv2.INTER_AREA)
+                        self.backgrounds[name] = bg_scaled
+                        continue
+                default_bg = np.full((CANVAS_HEIGHT, CANVAS_WIDTH, 3), 25, dtype=np.uint8)
+                self.backgrounds[name] = default_bg
+                continue
+
             img = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
             if img is not None:
                 if len(img.shape) == 2:
@@ -204,6 +208,9 @@ class AssetManager:
                 self.images[name] = img
             else:
                 self.images[name] = np.zeros((128, 128, 4), dtype=np.uint8)
+
+    def get_background(self, bg_key):
+        return self.backgrounds.get(bg_key)
 
     def overlay_alpha(self, canvas, img_rgba, x, y, target_size=None):
         if img_rgba is None or img_rgba.size == 0:
@@ -232,9 +239,14 @@ class AssetManager:
         blended = (alpha * src_crop[:, :, :3] + (1.0 - alpha) * bg_crop).astype(np.uint8)
         canvas[y1:y2, x1:x2] = blended
 
+    @staticmethod
+    def rotate_rgba(img_rgba, angle):
+        h, w = img_rgba.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, 1.0)
+        return cv2.warpAffine(img_rgba, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+
 
 class PCVEngine:
-
     @staticmethod
     def flip_horizontal(frame):
         return cv2.flip(frame, 1)
@@ -279,8 +291,8 @@ class PCVEngine:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         sx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         sy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        mag = np.sqrt(sx**2 + sy**2)
-        return np.clip(mag, 0, 255).astype(np.uint8)
+        mag = np.clip(np.sqrt(sx**2 + sy**2), 0, 255).astype(np.uint8)
+        return mag
 
     @staticmethod
     def apply_median_blur(image, ksize=7):
@@ -299,19 +311,17 @@ class PCVEngine:
     @staticmethod
     def apply_bush_obstacle(tile_img):
         edges = PCVEngine.apply_sobel_edges(tile_img)
-        k_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        dilated_edges = cv2.dilate(edges, k_dil, iterations=2)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        dilated = cv2.dilate(edges, kernel, iterations=2)
 
-        green_tint = np.zeros_like(tile_img)
-        green_tint[:, :, 1] = 190
-        green_tint[:, :, 0] = 30
-        green_tint[:, :, 2] = 40
+        vines = np.zeros_like(tile_img)
+        vines[:, :, 1] = dilated
+        vines[:, :, 0] = (dilated * 0.25).astype(np.uint8)
+        vines[:, :, 2] = (dilated * 0.15).astype(np.uint8)
 
-        vines = cv2.cvtColor(dilated_edges, cv2.COLOR_GRAY2BGR)
-        vines[:, :, 0] = (vines[:, :, 0] * 0.15).astype(np.uint8)
-        vines[:, :, 2] = (vines[:, :, 2] * 0.10).astype(np.uint8)
-
-        base_blend = cv2.addWeighted(tile_img, 0.45, green_tint, 0.55, 0)
+        dark_green = np.zeros_like(tile_img)
+        dark_green[:, :, 1] = 65
+        base_blend = cv2.addWeighted(tile_img, 0.40, dark_green, 0.60, 0)
         return cv2.addWeighted(base_blend, 0.75, vines, 0.65, 0)
 
     @staticmethod
@@ -355,7 +365,6 @@ class PCVEngine:
 
 class HandTracker:
     def __init__(self):
-
         self.lower_hsv1 = np.array([0, 30, 50], dtype=np.uint8)
         self.upper_hsv1 = np.array([25, 200, 255], dtype=np.uint8)
         self.wrap_hue = False
@@ -364,18 +373,15 @@ class HandTracker:
 
         self.is_calibrated = False
 
-
         self.ref_area = 15000
         self.current_area = 0
         self.current_solidity = 0.70
         self.current_circularity = 0.25
 
-
         self.cursor_x = CANVAS_WIDTH // 2
         self.cursor_y = CANVAS_HEIGHT // 2
         self.raw_target_x = self.cursor_x
         self.raw_target_y = self.cursor_y
-
 
         self.is_fist = False
         self.fist_confirm_counter = 0
@@ -383,13 +389,10 @@ class HandTracker:
         self.hand_detected = False
         self.target_lost_timer = 0.0
 
-
         self.open_hand_timer = 0.0
-
 
         self.latest_mask = None
         self.latest_contour = None
-
 
         self.calibrated_bgr = (180, 160, 210)
 
@@ -407,12 +410,10 @@ class HandTracker:
         clean_mask = PCVEngine.clean_hand_mask(raw_mask)
         self.latest_mask = clean_mask
 
-
         contours, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         best_cnt = None
         largest_area = 0
-
 
         min_detect_area = max(700, int(self.ref_area * 0.12))
         for cnt in contours:
@@ -427,7 +428,6 @@ class HandTracker:
             self.current_area = largest_area
             self.latest_contour = best_cnt
 
-
             M = cv2.moments(best_cnt)
             if M["m00"] > 0:
                 best_cx = M["m10"] / M["m00"]
@@ -436,7 +436,6 @@ class HandTracker:
                 x, y, w, h = cv2.boundingRect(best_cnt)
                 best_cx = x + w / 2.0
                 best_cy = y + h / 2.0
-
 
             min_x = w_cam * CAMERA_MARGIN_X
             max_x = w_cam * (1.0 - CAMERA_MARGIN_X)
@@ -451,18 +450,14 @@ class HandTracker:
             self.raw_target_x = target_x
             self.raw_target_y = target_y
 
-
             dist_sq = (target_x - self.cursor_x)**2 + (target_y - self.cursor_y)**2
             if dist_sq > 9:
-
                 alpha = 0.40 if dist_sq < 2500 else 0.70
                 self.cursor_x = int(alpha * target_x + (1.0 - alpha) * self.cursor_x)
                 self.cursor_y = int(alpha * target_y + (1.0 - alpha) * self.cursor_y)
 
-
             self.cursor_x = int(np.clip(self.cursor_x, 0, CANVAS_WIDTH))
             self.cursor_y = int(np.clip(self.cursor_y, 0, CANVAS_HEIGHT))
-
 
             hull = cv2.convexHull(best_cnt)
             hull_area = cv2.contourArea(hull)
@@ -475,30 +470,22 @@ class HandTracker:
 
             area_ratio = self.current_area / max(1.0, self.ref_area)
 
-
             fist_score = (circularity * 0.40) + (solidity * 0.35) + (max(0.0, 1.0 - area_ratio) * 0.25)
+            is_fist_frame = (fist_score > 0.46) or (solidity > 0.88 and area_ratio < 0.75) or (area_ratio < 0.50)
 
-
-            if fist_score >= 0.52:
+            if is_fist_frame:
                 self.fist_confirm_counter += 1
                 self.open_confirm_counter = 0
                 if self.fist_confirm_counter >= 2:
                     self.is_fist = True
                     self.open_hand_timer = 0.0
-            elif fist_score <= 0.42:
+            else:
                 self.open_confirm_counter += 1
                 self.fist_confirm_counter = 0
-                if self.open_confirm_counter >= 3:
+                if self.open_confirm_counter >= 2:
                     self.is_fist = False
                     self.open_hand_timer += dt
-            else:
-                if self.is_fist:
-                    self.open_hand_timer = 0.0
-                else:
-                    self.open_hand_timer += dt
-
         else:
-
             self.target_lost_timer += dt
             if self.target_lost_timer > 0.35:
                 self.hand_detected = False
@@ -513,7 +500,6 @@ class PuzzleEngine:
         self.stage = 1
         self.tile_images = [None] * 9
         self.full_photo = None
-
 
         self.neighbors = {
             0: [1, 3],
@@ -573,6 +559,7 @@ class PuzzleEngine:
 class ObstacleManager:
     def __init__(self):
         self.grid_obstacles = {}
+        self.obstacle_states = {}
         self.tile_idle_timers = {i: 0.0 for i in range(9)}
         self.time_since_last_spawn = 0.0
         self.stage = 1
@@ -580,6 +567,7 @@ class ObstacleManager:
     def reset_for_stage(self, stage):
         self.stage = stage
         self.grid_obstacles = {}
+        self.obstacle_states = {}
         self.tile_idle_timers = {i: 0.0 for i in range(9)}
         self.time_since_last_spawn = 0.0
 
@@ -603,34 +591,41 @@ class ObstacleManager:
     def update(self, dt, hovered_grid_pos, empty_grid_pos):
         cfg = self.get_stage_settings()
 
-
         for pos in range(9):
             if pos == empty_grid_pos or pos == hovered_grid_pos:
                 self.tile_idle_timers[pos] = 0.0
             else:
                 self.tile_idle_timers[pos] += dt
 
+        for pos, state in list(self.obstacle_states.items()):
+            if state["stage"] == "FORMING":
+                state["timer"] += dt
+                if state["timer"] >= OBSTACLE_FORM_DURATION:
+                    state["stage"] = "PERMANENT"
+                    state["timer"] = OBSTACLE_FORM_DURATION
 
         self.time_since_last_spawn += dt
         if self.time_since_last_spawn >= OBSTACLE_SPAWN_INTERVAL:
             self.time_since_last_spawn = 0.0
             free_slots = [p for p in range(9) if p != empty_grid_pos and p not in self.grid_obstacles]
             if free_slots:
-
                 target_pos = max(free_slots, key=lambda p: self.tile_idle_timers.get(p, 0.0))
                 chosen_obs = random.choice(cfg["allowed_obstacles"])
                 self.grid_obstacles[target_pos] = chosen_obs
+                self.obstacle_states[target_pos] = {"stage": "FORMING", "timer": 0.0}
                 self.tile_idle_timers[target_pos] = 0.0
 
     def check_deadlock(self, puzzle_engine):
         empty_pos = puzzle_engine.tiles.index(puzzle_engine.empty_val)
         neighbors = puzzle_engine.neighbors[empty_pos]
-        all_neighbors_locked = all(n in self.grid_obstacles for n in neighbors)
-        total_obstacles = len(self.grid_obstacles)
-        return all_neighbors_locked or (total_obstacles >= 6)
+        perm_locked = [n for n in neighbors if n in self.grid_obstacles and self.obstacle_states.get(n, {}).get("stage") == "PERMANENT"]
+        all_neighbors_locked = (len(perm_locked) == len(neighbors))
+        total_perm_obstacles = sum(1 for s in self.obstacle_states.values() if s.get("stage") == "PERMANENT")
+        return all_neighbors_locked or (total_perm_obstacles >= 6)
 
     def clear_all(self):
         self.grid_obstacles.clear()
+        self.obstacle_states.clear()
         for p in self.tile_idle_timers:
             self.tile_idle_timers[p] = 0.0
 
@@ -639,64 +634,92 @@ class UIRenderer:
     def __init__(self, asset_mgr):
         self.assets = asset_mgr
 
-
         self.tool_slots = {
-            TOOL_KNIFE: {"name": "Pisau", "key": "[1]", "rect": (40, 200, 160, 130), "icon": "knife.png"},
-            TOOL_HAIRDRYER: {"name": "Hairdryer", "key": "[2]", "rect": (40, 360, 160, 130), "icon": "hairdryer.png"},
-            TOOL_FLASHLIGHT: {"name": "Senter", "key": "[3]", "rect": (1080, 200, 160, 130), "icon": "flashlight.png"},
-            TOOL_SPONGE: {"name": "Spons", "key": "[4]", "rect": (1080, 360, 160, 130), "icon": "sponge.png"},
+            TOOL_KNIFE: {"name": "Pisau", "rect": (40, 200, 160, 130), "icon": "knife.png"},
+            TOOL_HAIRDRYER: {"name": "Obor", "rect": (40, 360, 160, 130), "icon": "hairdryer.png"},
+            TOOL_FLASHLIGHT: {"name": "Lentera", "rect": (1080, 200, 160, 130), "icon": "flashlight.png"},
+            TOOL_SPONGE: {"name": "Kipas", "rect": (1080, 360, 160, 130), "icon": "sponge.png"},
         }
+
+        self.font_title = None
+        self.font_btn = None
+        self.font_hud = None
+        self.font_timer = None
+        self._init_fonts()
+
+    def _init_fonts(self):
+        font_main = "C:/Windows/Fonts/georgiab.ttf"
+        font_mono = "C:/Windows/Fonts/consolab.ttf"
+        try:
+            if os.path.exists(font_main):
+                self.font_title = ImageFont.truetype(font_main, 44)
+                self.font_btn = ImageFont.truetype(font_main, 24)
+                self.font_hud = ImageFont.truetype(font_main, 20)
+            if os.path.exists(font_mono):
+                self.font_timer = ImageFont.truetype(font_mono, 24)
+        except Exception:
+            pass
 
     @staticmethod
     def draw_button(canvas, rect, text, is_hovered, accent_color, hotkey_text=None):
         x, y, w, h = rect
-        bg_col = (45, 38, 55) if is_hovered else (32, 28, 40)
-        border_col = accent_color if is_hovered else (95, 90, 115)
+        bg_col = (48, 40, 58) if is_hovered else (32, 27, 40)
+        border_col = accent_color if is_hovered else (100, 95, 120)
         border_th = 3 if is_hovered else 2
 
         cv2.rectangle(canvas, (x, y), (x + w, y + h), bg_col, -1)
         cv2.rectangle(canvas, (x, y), (x + w, y + h), border_col, border_th)
 
-        if is_hovered:
-            corner_len = 12
-            cv2.line(canvas, (x, y), (x + corner_len, y), accent_color, 4)
-            cv2.line(canvas, (x, y), (x, y + corner_len), accent_color, 4)
-            cv2.line(canvas, (x + w, y + h), (x + w - corner_len, y + h), accent_color, 4)
-            cv2.line(canvas, (x + w, y + h), (x + w, y + h - corner_len), accent_color, 4)
+        corner_len = 14
+        corner_col = accent_color if is_hovered else (130, 120, 150)
+        cv2.line(canvas, (x, y), (x + corner_len, y), corner_col, 3)
+        cv2.line(canvas, (x, y), (x, y + corner_len), corner_col, 3)
+        cv2.line(canvas, (x + w, y), (x + w - corner_len, y), corner_col, 3)
+        cv2.line(canvas, (x + w, y), (x + w, y + corner_len), corner_col, 3)
+        cv2.line(canvas, (x, y + h), (x + corner_len, y + h), corner_col, 3)
+        cv2.line(canvas, (x, y + h), (x, y + h - corner_len), corner_col, 3)
+        cv2.line(canvas, (x + w, y + h), (x + w - corner_len, y + h), corner_col, 3)
+        cv2.line(canvas, (x + w, y + h), (x + w, y + h - corner_len), corner_col, 3)
 
         (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.85, 2)
         tx = x + (w - tw) // 2
         ty = y + (h + th) // 2 - 2
         text_col = COLOR_TEXT_WHITE if not is_hovered else accent_color
+        cv2.putText(canvas, text, (tx + 2, ty + 2), cv2.FONT_HERSHEY_DUPLEX, 0.85, (15, 12, 20), 3, cv2.LINE_AA)
         cv2.putText(canvas, text, (tx, ty), cv2.FONT_HERSHEY_DUPLEX, 0.85, text_col, 2, cv2.LINE_AA)
 
-        if hotkey_text:
-            cv2.putText(canvas, hotkey_text, (x + w - 46, y + 22), cv2.FONT_HERSHEY_PLAIN, 1.1, COLOR_NEON_GOLD, 1, cv2.LINE_AA)
-
     def render_hud(self, canvas, stage, score, lives, elapsed_sec):
-        cv2.rectangle(canvas, (0, 0), (CANVAS_WIDTH, 75), COLOR_PANEL_BG, -1)
-        cv2.line(canvas, (0, 75), (CANVAS_WIDTH, 75), COLOR_NEON_CYAN, 2)
+        overlay = canvas.copy()
+        cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, 75), (28, 24, 34), -1)
+        cv2.addWeighted(overlay, 0.88, canvas, 0.12, 0, canvas)
+        cv2.line(canvas, (0, 75), (CANVAS_WIDTH, 75), COLOR_NEON_GOLD, 2)
 
         stage_text = f"STAGE {stage}/3"
         cv2.putText(canvas, stage_text, (40, 48), cv2.FONT_HERSHEY_DUPLEX, 0.9, COLOR_NEON_GOLD, 2, cv2.LINE_AA)
 
         title_text = "PUZZLE CAMS"
-        (tw, _), _ = cv2.getTextSize(title_text, cv2.FONT_HERSHEY_TRIPLEX, 1.2, 2)
+        (tw, _), _ = cv2.getTextSize(title_text, cv2.FONT_HERSHEY_TRIPLEX, 1.25, 2)
         tx = (CANVAS_WIDTH - tw) // 2
-        cv2.putText(canvas, title_text, (tx + 2, 52), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (20, 20, 20), 3, cv2.LINE_AA)
-        cv2.putText(canvas, title_text, (tx, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, COLOR_NEON_CYAN, 2, cv2.LINE_AA)
+        cv2.putText(canvas, title_text, (tx + 2, 52), cv2.FONT_HERSHEY_TRIPLEX, 1.25, (15, 12, 20), 4, cv2.LINE_AA)
+        cv2.putText(canvas, title_text, (tx, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.25, COLOR_NEON_CYAN, 2, cv2.LINE_AA)
 
-        score_text = f"SCORE: {score:05d}"
-        cv2.putText(canvas, score_text, (750, 48), cv2.FONT_HERSHEY_DUPLEX, 0.85, COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+        score_text = f"SKOR: {score:05d}"
+        (sw, _), _ = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_DUPLEX, 0.85, 2)
+        score_x = CANVAS_WIDTH - sw - 40
+        score_y = CANVAS_HEIGHT - 40
+        cv2.putText(canvas, score_text, (score_x, score_y), cv2.FONT_HERSHEY_DUPLEX, 0.85, COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
 
         heart_img = self.assets.images.get("heart.png")
         hx_start = 980
         for i in range(3):
-            hx = hx_start + (i * 38)
+            hx = hx_start + (i * 42)
             if i < lives:
-                self.assets.overlay_alpha(canvas, heart_img, hx, 22, (32, 32))
+                if heart_img is not None:
+                    self.assets.overlay_alpha(canvas, heart_img, hx, 20, (36, 36))
+                else:
+                    cv2.circle(canvas, (hx + 18, 38), 12, (40, 40, 230), -1, cv2.LINE_AA)
             else:
-                cv2.circle(canvas, (hx + 16, 38), 12, (60, 60, 70), 2, cv2.LINE_AA)
+                cv2.circle(canvas, (hx + 18, 38), 12, (60, 55, 70), 2, cv2.LINE_AA)
 
         mins = int(elapsed_sec) // 60
         secs = int(elapsed_sec) % 60
@@ -711,45 +734,48 @@ class UIRenderer:
             is_hovered = (hover_tool == tool_id)
 
             if not is_active:
-                bg_col = (26, 24, 30)
-                border_col = (50, 50, 55)
+                bg_col = (25, 22, 28)
+                border_col = (50, 48, 55)
             elif is_equipped:
-                bg_col = (45, 65, 30)
+                bg_col = (42, 58, 32)
                 border_col = COLOR_NEON_GREEN
             elif is_hovered:
-                bg_col = (55, 50, 65)
+                bg_col = (55, 48, 62)
                 border_col = COLOR_NEON_GOLD
             else:
-                bg_col = COLOR_PANEL_BG
-                border_col = (90, 85, 110)
+                bg_col = (34, 30, 40)
+                border_col = (90, 85, 105)
 
-            cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), bg_col, -1)
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (rx, ry), (rx + rw, ry + rh), bg_col, -1)
+            cv2.addWeighted(overlay, 0.85, canvas, 0.15, 0, canvas)
             cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), border_col, 2)
 
-            cv2.putText(canvas, info["name"], (rx + 12, ry + 24), cv2.FONT_HERSHEY_DUPLEX, 0.55, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
-            cv2.putText(canvas, info["key"], (rx + rw - 35, ry + 24), cv2.FONT_HERSHEY_PLAIN, 1.1, COLOR_NEON_GOLD, 1, cv2.LINE_AA)
+            (nw, _), _ = cv2.getTextSize(info["name"], cv2.FONT_HERSHEY_DUPLEX, 0.60, 1)
+            nx = rx + (rw - nw) // 2
+            cv2.putText(canvas, info["name"], (nx, ry + 24), cv2.FONT_HERSHEY_DUPLEX, 0.60, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
 
             icon_img = self.assets.images.get(info["icon"])
-            ix = rx + (rw - 64) // 2
-            iy = ry + 35
+            ix = rx + (rw - 72) // 2
+            iy = ry + 32
             if icon_img is not None:
                 if is_active:
-                    self.assets.overlay_alpha(canvas, icon_img, ix, iy, (64, 64))
+                    self.assets.overlay_alpha(canvas, icon_img, ix, iy, (72, 72))
                 else:
                     locked_icon = icon_img.copy()
                     locked_icon[:, :, :3] = (locked_icon[:, :, :3] * 0.25).astype(np.uint8)
-                    self.assets.overlay_alpha(canvas, locked_icon, ix, iy, (64, 64))
-                    cv2.putText(canvas, "TERKUNCI", (rx + 35, ry + 75), cv2.FONT_HERSHEY_DUPLEX, 0.5, (100, 100, 110), 1, cv2.LINE_AA)
+                    self.assets.overlay_alpha(canvas, locked_icon, ix, iy, (72, 72))
+                    cv2.putText(canvas, "TERKUNCI", (rx + 35, ry + 75), cv2.FONT_HERSHEY_DUPLEX, 0.5, (110, 105, 120), 1, cv2.LINE_AA)
 
             if is_hovered and hover_progress > 0.0:
                 bar_w = int((rw - 20) * hover_progress)
                 cv2.rectangle(canvas, (rx + 10, ry + rh - 10), (rx + 10 + bar_w, ry + rh - 6), COLOR_NEON_GOLD, -1)
 
             if is_equipped:
-                cv2.rectangle(canvas, (rx + 25, ry + rh - 20), (rx + rw - 25, ry + rh - 4), COLOR_NEON_GREEN, -1)
-                cv2.putText(canvas, "DIPEGANG", (rx + 38, ry + rh - 8), cv2.FONT_HERSHEY_PLAIN, 0.9, (20, 20, 20), 1, cv2.LINE_AA)
+                cv2.rectangle(canvas, (rx + 20, ry + rh - 22), (rx + rw - 20, ry + rh - 4), COLOR_NEON_GREEN, -1)
+                cv2.putText(canvas, "DIPEGANG", (rx + 34, ry + rh - 8), cv2.FONT_HERSHEY_DUPLEX, 0.45, (15, 15, 20), 1, cv2.LINE_AA)
 
-    def render_puzzle_board(self, canvas, puzzle, obstacles, hovered_grid_pos, hover_progress, held_tile_pos):
+    def render_puzzle_board(self, canvas, puzzle, obstacles, obstacle_states, hovered_grid_pos, hover_progress, held_tile_pos):
         frame_img = self.assets.images.get("frame.png")
         if frame_img is not None:
             self.assets.overlay_alpha(canvas, frame_img, BOARD_X - 20, BOARD_Y - 20, (BOARD_SIZE + 40, BOARD_SIZE + 40))
@@ -760,48 +786,54 @@ class UIRenderer:
         empty_pos = puzzle.tiles.index(empty_val)
 
         for grid_pos in range(9):
-            r = grid_pos // GRID_COLS
-            c = grid_pos % GRID_COLS
-            tx = BOARD_X + (c * TILE_SIZE)
-            ty = BOARD_Y + (r * TILE_SIZE)
+            row = grid_pos // GRID_COLS
+            col = grid_pos % GRID_COLS
+            tx = BOARD_X + col * TILE_SIZE
+            ty = BOARD_Y + row * TILE_SIZE
 
-            tile_id = puzzle.tiles[grid_pos]
+            tile_num = puzzle.tiles[grid_pos]
+            obs_type = obstacles.get(grid_pos, OBSTACLE_NONE)
+            state_info = obstacle_states.get(grid_pos, {"stage": "PERMANENT", "timer": OBSTACLE_FORM_DURATION})
 
-            if tile_id == empty_val:
-                cv2.rectangle(canvas, (tx, ty), (tx + TILE_SIZE, ty + TILE_SIZE), (22, 18, 25), -1)
-                cv2.rectangle(canvas, (tx + 2, ty + 2), (tx + TILE_SIZE - 2, ty + TILE_SIZE - 2), (40, 36, 48), 1)
-                cv2.line(canvas, (tx + 20, ty + 20), (tx + TILE_SIZE - 20, ty + TILE_SIZE - 20), (32, 28, 38), 2)
-                cv2.line(canvas, (tx + TILE_SIZE - 20, ty + 20), (tx + 20, ty + TILE_SIZE - 20), (32, 28, 38), 2)
+            if tile_num == empty_val:
+                cv2.rectangle(canvas, (tx, ty), (tx + TILE_SIZE, ty + TILE_SIZE), (24, 20, 30), -1)
+                cv2.rectangle(canvas, (tx + 1, ty + 1), (tx + TILE_SIZE - 1, ty + TILE_SIZE - 1), (45, 40, 55), 2)
             else:
-                raw_tile = puzzle.tile_images[tile_id]
+                raw_tile = puzzle.tile_images[tile_num]
                 if raw_tile is None:
-                    raw_tile = np.full((TILE_SIZE, TILE_SIZE, 3), 80, dtype=np.uint8)
+                    raw_tile = np.full((TILE_SIZE, TILE_SIZE, 3), 90, dtype=np.uint8)
 
-                obs_type = obstacles.get(grid_pos, OBSTACLE_NONE)
                 if obs_type == OBSTACLE_BUSH:
-                    display_tile = PCVEngine.apply_bush_obstacle(raw_tile)
+                    full_obs = PCVEngine.apply_bush_obstacle(raw_tile)
                 elif obs_type == OBSTACLE_ICE:
-                    display_tile = PCVEngine.apply_ice_obstacle(raw_tile)
+                    full_obs = PCVEngine.apply_ice_obstacle(raw_tile)
                 elif obs_type == OBSTACLE_DARK:
-                    display_tile = PCVEngine.apply_dark_curse_obstacle(raw_tile)
+                    full_obs = PCVEngine.apply_dark_curse_obstacle(raw_tile)
                 elif obs_type == OBSTACLE_FOG:
-                    display_tile = PCVEngine.apply_fog_obstacle(raw_tile)
+                    full_obs = PCVEngine.apply_fog_obstacle(raw_tile)
+                else:
+                    full_obs = raw_tile.copy()
+
+                if obs_type != OBSTACLE_NONE and state_info.get("stage") == "FORMING":
+                    prog = min(1.0, state_info.get("timer", 0.0) / max(0.001, OBSTACLE_FORM_DURATION))
+                    display_tile = cv2.addWeighted(raw_tile, 1.0 - prog, full_obs, prog, 0)
+                    pulse = int(140 + 115 * math.sin(state_info.get("timer", 0.0) * 9.0))
+                    cv2.rectangle(display_tile, (0, 0), (TILE_SIZE - 1, TILE_SIZE - 1), (0, pulse, 255), 2)
+                    cv2.rectangle(display_tile, (0, TILE_SIZE - 20), (TILE_SIZE, TILE_SIZE), (15, 15, 20), -1)
+                    cv2.putText(display_tile, "MEMBENTUK...", (12, TILE_SIZE - 5), cv2.FONT_HERSHEY_PLAIN, 0.9, (0, pulse, 255), 1, cv2.LINE_AA)
+                elif obs_type != OBSTACLE_NONE:
+                    display_tile = full_obs
+                    obs_label = OBSTACLE_NAMES[obs_type]
+                    cv2.rectangle(display_tile, (0, TILE_SIZE - 22), (TILE_SIZE, TILE_SIZE), (18, 15, 24), -1)
+                    cv2.putText(display_tile, obs_label, (12, TILE_SIZE - 6), cv2.FONT_HERSHEY_PLAIN, 0.95, (0, 215, 255), 1, cv2.LINE_AA)
                 else:
                     display_tile = raw_tile.copy()
 
                 canvas[ty:ty+TILE_SIZE, tx:tx+TILE_SIZE] = display_tile
-                cv2.rectangle(canvas, (tx, ty), (tx + TILE_SIZE, ty + TILE_SIZE), (30, 25, 35), 1)
-
-
-                if obs_type != OBSTACLE_NONE:
-                    obs_label = OBSTACLE_NAMES[obs_type]
-                    cv2.rectangle(canvas, (tx, ty + TILE_SIZE - 22), (tx + TILE_SIZE, ty + TILE_SIZE), (15, 15, 20), -1)
-                    cv2.putText(canvas, obs_label, (tx + 12, ty + TILE_SIZE - 6), cv2.FONT_HERSHEY_PLAIN, 0.95, (0, 215, 255), 1, cv2.LINE_AA)
-
+                cv2.rectangle(canvas, (tx, ty), (tx + TILE_SIZE, ty + TILE_SIZE), (35, 30, 45), 1)
 
             if grid_pos == held_tile_pos:
                 cv2.rectangle(canvas, (tx + 1, ty + 1), (tx + TILE_SIZE - 1, ty + TILE_SIZE - 1), COLOR_NEON_GREEN, 3)
-
 
             elif grid_pos == hovered_grid_pos:
                 is_movable = (grid_pos in puzzle.neighbors[empty_pos]) and (grid_pos not in obstacles)
@@ -818,9 +850,68 @@ class UIRenderer:
                     angle = int(360 * hover_progress)
                     cv2.ellipse(canvas, center_pt, (radius, radius), -90, 0, angle, border_color, 4, cv2.LINE_AA)
 
-    def render_cursor(self, canvas, tracker, equipped_tool):
+    def render_cursor(self, canvas, tracker, equipped_tool, tool_anim=None):
         cx, cy = tracker.cursor_x, tracker.cursor_y
         is_fist = tracker.is_fist
+
+        if tool_anim is not None:
+            tool_id = tool_anim["tool"]
+            grid_pos = tool_anim["grid_pos"]
+            prog = min(1.0, tool_anim["elapsed"] / max(0.001, tool_anim["duration"]))
+
+            row = grid_pos // GRID_COLS
+            col = grid_pos % GRID_COLS
+            tile_cx = BOARD_X + col * TILE_SIZE + TILE_SIZE // 2
+            tile_cy = BOARD_Y + row * TILE_SIZE + TILE_SIZE // 2
+
+            tool_info = self.tool_slots.get(tool_id)
+            icon_img = self.assets.images.get(tool_info["icon"]) if tool_info else None
+
+            if tool_id == TOOL_KNIFE:
+                angle = -35.0 + 80.0 * math.sin(prog * math.pi)
+                px = tile_cx - 36 + int(math.sin(prog * math.pi) * 35)
+                py = tile_cy - 36 + int(math.sin(prog * math.pi) * 30)
+                pt1 = (tile_cx - 45, tile_cy - 40)
+                pt2 = (tile_cx + int(prog * 80) - 35, tile_cy + int(prog * 75) - 30)
+                cv2.line(canvas, pt1, pt2, (255, 255, 255), 3, cv2.LINE_AA)
+                if icon_img is not None:
+                    rot = AssetManager.rotate_rgba(icon_img, angle)
+                    self.assets.overlay_alpha(canvas, rot, px, py, (72, 72))
+
+            elif tool_id == TOOL_HAIRDRYER:
+                reach = math.sin(prog * math.pi)
+                px = tile_cx - 36 + int(reach * 35)
+                py = tile_cy - 36 + int(math.sin(prog * 25.0) * 4)
+                angle = -15.0 + 10.0 * reach
+                glow_r = int(25 + 18 * reach)
+                cv2.circle(canvas, (px + 48, py + 18), glow_r, (0, 140, 255), 2, cv2.LINE_AA)
+                if icon_img is not None:
+                    rot = AssetManager.rotate_rgba(icon_img, angle)
+                    self.assets.overlay_alpha(canvas, rot, px, py, (72, 72))
+
+            elif tool_id == TOOL_FLASHLIGHT:
+                lift = math.sin(prog * math.pi)
+                px = tile_cx - 36
+                py = tile_cy - 48 - int(lift * 28)
+                angle = math.sin(prog * math.pi * 4.0) * 12.0
+                halo_r = int(35 + 50 * lift)
+                cv2.circle(canvas, (tile_cx, tile_cy), halo_r, (0, 215, 255), 2, cv2.LINE_AA)
+                if icon_img is not None:
+                    rot = AssetManager.rotate_rgba(icon_img, angle)
+                    self.assets.overlay_alpha(canvas, rot, px, py, (72, 72))
+
+            elif tool_id == TOOL_SPONGE:
+                fan_osc = math.sin(prog * math.pi * 4.0)
+                angle = fan_osc * 30.0
+                px = tile_cx - 36 + int(fan_osc * 20)
+                py = tile_cy - 36
+                cv2.ellipse(canvas, (tile_cx + 20, tile_cy), (32, 20), 0, -45, 45, (245, 245, 245), 2, cv2.LINE_AA)
+                if icon_img is not None:
+                    rot = AssetManager.rotate_rgba(icon_img, angle)
+                    self.assets.overlay_alpha(canvas, rot, px, py, (72, 72))
+
+            cv2.circle(canvas, (cx, cy), 6, COLOR_NEON_GOLD, -1, cv2.LINE_AA)
+            return
 
         if equipped_tool != TOOL_NONE:
             tool_info = self.tool_slots.get(equipped_tool)
@@ -844,7 +935,8 @@ class UIRenderer:
         pip_w, pip_h = 160, 120
         pip_x, pip_y = 40, CANVAS_HEIGHT - pip_h - 20
 
-        cv2.rectangle(canvas, (pip_x - 2, pip_y - 2), (pip_x + pip_w + 2, pip_y + pip_h + 2), COLOR_NEON_CYAN, 1)
+        cv2.rectangle(canvas, (pip_x - 3, pip_y - 3), (pip_x + pip_w + 3, pip_y + pip_h + 3), (45, 40, 55), -1)
+        cv2.rectangle(canvas, (pip_x - 2, pip_y - 2), (pip_x + pip_w + 2, pip_y + pip_h + 2), COLOR_NEON_GOLD, 2)
         small_cam = cv2.resize(frame, (pip_w, pip_h), interpolation=cv2.INTER_AREA)
 
         if tracker.latest_mask is not None:
@@ -856,168 +948,146 @@ class UIRenderer:
 
         gesture_str = "KEPAL (FIST)" if tracker.is_fist else "BUKA (OPEN)"
         badge_col = COLOR_NEON_GOLD if tracker.is_fist else COLOR_NEON_GREEN
-        cv2.rectangle(canvas, (pip_x, pip_y), (pip_x + pip_w, pip_y + 18), (20, 20, 20), -1)
-        cv2.putText(canvas, gesture_str, (pip_x + 6, pip_y + 14), cv2.FONT_HERSHEY_PLAIN, 0.9, badge_col, 1, cv2.LINE_AA)
+        cv2.rectangle(canvas, (pip_x, pip_y), (pip_x + pip_w, pip_y + 18), (20, 18, 25), -1)
+        cv2.putText(canvas, gesture_str, (pip_x + 8, pip_y + 14), cv2.FONT_HERSHEY_PLAIN, 0.9, badge_col, 1, cv2.LINE_AA)
 
 
 class PuzzleCamsGame:
     def __init__(self):
-        self.cap = cv2.VideoCapture(0)
-        self.using_simulated_camera = False
-
-        if not self.cap.isOpened():
-            print("[INFO] Kamera fisik tidak terdeteksi. Menggunakan simulator kamera virtual.")
-            self.using_simulated_camera = True
-        else:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_AUTOSIZE)
 
         self.assets = AssetManager(ASSET_DIR)
+        self.ui = UIRenderer(self.assets)
         self.tracker = HandTracker()
         self.puzzle = PuzzleEngine()
         self.obstacles = ObstacleManager()
-        self.ui = UIRenderer(self.assets)
-
 
         self.state = STATE_MAIN_MENU
         self.running = True
-
         self.stage = 1
         self.score = 0
         self.lives = 3
-        self.stage_start_time = time.time()
+        self.stage_start_time = 0.0
 
+        self.cap = cv2.VideoCapture(0)
+        self.using_simulated_camera = False
+        if not self.cap.isOpened():
+            print("[INFO] Kamera fisik tidak terdeteksi. Menggunakan simulator kamera virtual.")
+            self.using_simulated_camera = True
+            self.sim_phase = 0.0
 
-        self.equipped_tool = TOOL_NONE
-        self.held_tile_grid_pos = -1
+        self.mouse_x = CANVAS_WIDTH // 2
+        self.mouse_y = CANVAS_HEIGHT // 2
+        self.mouse_fist = False
+        self.mouse_clicked = False
+        cv2.setMouseCallback(WINDOW_TITLE, self._on_mouse)
 
-
-        self.hover_grid_pos = -1
-        self.hover_grid_timer = 0.0
-
-        self.hover_tool_id = TOOL_NONE
-        self.hover_tool_timer = 0.0
-
-
-        self.capture_fist_timer = 0.0
-        self.capture_countdown = -1.0
-
-
-        self.flash_intensity = 0.0
-        self.deadlock_flash_timer = 0.0
-
-
-        self.stage_clear_timer = 0.0
-
-
+        self.calib_roi = (540, 260, 200, 200)
         self.calib_state = CALIB_IDLE
         self.calib_progress = 0.0
         self.calib_status_text = "Menyiapkan"
         self.calib_error_message = ""
         self.calib_samples_hsv = []
         self.calib_samples_area = []
-        self.calib_timer = 0.0
         self.calib_target_samples = 30
+        self.calib_timer = 0.0
 
-        roi_size = 200
-        self.calib_roi = (
-            (CANVAS_WIDTH - roi_size) // 2,
-            (CANVAS_HEIGHT - roi_size) // 2 - 25,
-            roi_size,
-            roi_size
-        )
+        self.capture_fist_timer = 0.0
+        self.capture_countdown = -1.0
+        self.flash_intensity = 0.0
 
+        self.equipped_tool = TOOL_NONE
+        self.hover_tool_id = TOOL_NONE
+        self.hover_tool_timer = 0.0
 
-        self.mouse_mode = False
-        self.mouse_x = CANVAS_WIDTH // 2
-        self.mouse_y = CANVAS_HEIGHT // 2
-        self.mouse_clicked = False
+        self.hover_grid_pos = -1
+        self.hover_grid_timer = 0.0
+        self.held_tile_grid_pos = -1
 
+        self.active_tool_anim = None
 
-        self.btn_main_menu_play = ((CANVAS_WIDTH - 280) // 2, 360, 280, 65)
-        self.btn_main_menu_exit = ((CANVAS_WIDTH - 280) // 2, 450, 280, 65)
+        self.deadlock_flash_timer = 0.0
+        self.stage_clear_timer = 0.0
 
-        self.btn_gameover_retry = ((CANVAS_WIDTH - 280) // 2, 440, 280, 55)
-        self.btn_gameover_menu = ((CANVAS_WIDTH - 280) // 2, 510, 280, 55)
-        self.btn_gameover_exit = ((CANVAS_WIDTH - 280) // 2, 580, 280, 55)
+        self.btn_main_menu_play = ((CANVAS_WIDTH - 240) // 2, 380, 240, 60)
+        self.btn_main_menu_exit = ((CANVAS_WIDTH - 240) // 2, 470, 240, 60)
 
-    def setup_window(self):
-        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_AUTOSIZE)
-        cv2.setMouseCallback(WINDOW_TITLE, self._on_mouse_event)
+        self.btn_gameover_retry = (420, 520, 200, 55)
+        self.btn_gameover_menu = (660, 520, 200, 55)
+        self.btn_gameover_exit = (540, 595, 200, 55)
 
-    def _on_mouse_event(self, event, x, y, flags, param):
+    def _on_mouse(self, event, x, y, flags, param):
         self.mouse_x = x
         self.mouse_y = y
-        if self.mouse_mode:
-            self.tracker.cursor_x = x
-            self.tracker.cursor_y = y
 
         if event == cv2.EVENT_LBUTTONDOWN:
+            self.mouse_fist = True
             self.mouse_clicked = True
-            if self.mouse_mode:
-                self.tracker.is_fist = True
         elif event == cv2.EVENT_LBUTTONUP:
-            if self.mouse_mode:
-                self.tracker.is_fist = False
+            self.mouse_fist = False
 
     def is_mouse_inside(self, rect):
-        rx, ry, rw, rh = rect
-        return (rx <= self.mouse_x <= rx + rw) and (ry <= self.mouse_y <= ry + rh)
+        x, y, w, h = rect
+        return (x <= self.mouse_x <= x + w) and (y <= self.mouse_y <= y + h)
 
-    def read_camera_frame(self):
-        if not self.using_simulated_camera and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if ret and frame is not None:
-                return PCVEngine.flip_horizontal(frame)
+    def _read_camera_frame(self):
+        if self.using_simulated_camera:
+            self.sim_phase += 0.04
+            frame = np.full((480, 640, 3), 40, dtype=np.uint8)
 
-        sim_frame = np.full((480, 640, 3), 35, dtype=np.uint8)
-        for i in range(0, 640, 40):
-            cv2.line(sim_frame, (i, 0), (i, 480), (45, 45, 55), 1)
-        for j in range(0, 480, 40):
-            cv2.line(sim_frame, (0, j), (640, j), (45, 45, 55), 1)
-        cv2.putText(sim_frame, "SIMULASI KAMERA", (220, 240), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 215, 255), 1)
-        return sim_frame
+            hx = int(320 + math.sin(self.sim_phase) * 160)
+            hy = int(240 + math.cos(self.sim_phase * 0.7) * 90)
+
+            cb, cg, cr = self.tracker.calibrated_bgr
+            cv2.circle(frame, (hx, hy), 45, (cb, cg, cr), -1)
+
+            cv2.putText(frame, "SIMULATOR KAMERA AKTIF", (20, 40), cv2.FONT_HERSHEY_PLAIN, 1.2, COLOR_NEON_GOLD, 1, cv2.LINE_AA)
+            return True, frame
+
+        ret, frame = self.cap.read()
+        if not ret or frame is None:
+            self.using_simulated_camera = True
+            return self._read_camera_frame()
+        return True, frame
 
     def reset_game_state(self):
         self.stage = 1
         self.score = 0
         self.lives = 3
         self.equipped_tool = TOOL_NONE
-        self.held_tile_grid_pos = -1
-        self.hover_grid_pos = -1
-        self.hover_grid_timer = 0.0
         self.hover_tool_id = TOOL_NONE
         self.hover_tool_timer = 0.0
-        self.capture_fist_timer = 0.0
-        self.capture_countdown = -1.0
-        self.flash_intensity = 0.0
+        self.hover_grid_pos = -1
+        self.hover_grid_timer = 0.0
+        self.held_tile_grid_pos = -1
+        self.active_tool_anim = None
         self.deadlock_flash_timer = 0.0
-        self.obstacles.reset_for_stage(1)
-
+        self.obstacles.reset_for_stage(self.stage)
 
     def run(self):
-        self.setup_window()
         last_time = time.time()
-
         while self.running:
             cur_time = time.time()
             dt = cur_time - last_time
             last_time = cur_time
+            dt = min(dt, 0.1)
 
-            frame = self.read_camera_frame()
+            ret, raw_frame = self._read_camera_frame()
+            if not ret:
+                break
 
+            frame = PCVEngine.flip_horizontal(raw_frame)
 
-            if self.state in (STATE_CAPTURE, STATE_PLAYING) and not self.mouse_mode:
+            if self.tracker.is_calibrated:
                 self.tracker.process_frame(frame, dt)
 
+            if self.mouse_fist:
+                self.tracker.cursor_x = self.mouse_x
+                self.tracker.cursor_y = self.mouse_y
+                self.tracker.is_fist = True
+                self.tracker.open_hand_timer = 0.0
 
-            if self.state == STATE_PLAYING and self.equipped_tool != TOOL_NONE:
-                if not self.tracker.is_fist and self.tracker.open_hand_timer >= AUTO_DROP_OPEN_TIME:
-                    self.equipped_tool = TOOL_NONE
-
-            canvas = np.full((CANVAS_HEIGHT, CANVAS_WIDTH, 3), COLOR_BG_DARK, dtype=np.uint8)
-
+            canvas = np.zeros((CANVAS_HEIGHT, CANVAS_WIDTH, 3), dtype=np.uint8)
 
             if self.state == STATE_MAIN_MENU:
                 self._update_and_render_main_menu(canvas, dt)
@@ -1033,43 +1103,35 @@ class PuzzleCamsGame:
                 self._update_and_render_end(canvas, dt)
 
             cv2.imshow(WINDOW_TITLE, canvas)
+
             self.mouse_clicked = False
 
             key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord('q'), ord('Q')):
-                if self.state in (STATE_MAIN_MENU, STATE_GAME_OVER, STATE_VICTORY):
-                    self.running = False
-                    break
-                else:
-                    self.state = STATE_MAIN_MENU
-            self._handle_keyboard_shortcuts(key, frame)
+            if key != 255:
+                self._handle_keyboard(key)
 
         if self.cap.isOpened():
             self.cap.release()
         cv2.destroyAllWindows()
 
-    def _handle_keyboard_shortcuts(self, key, frame):
-        if key == 13 or key == ord(' '):
+    def _handle_keyboard(self, key):
+        if key == 27:
+            if self.state == STATE_MAIN_MENU:
+                self.running = False
+            elif self.state in (STATE_PLAYING, STATE_STAGE_CLEAR, STATE_GAME_OVER, STATE_VICTORY):
+                self.state = STATE_MAIN_MENU
+            elif self.state == STATE_CALIBRATION:
+                self.state = STATE_MAIN_MENU
+
+        elif key == 32:
             if self.state == STATE_MAIN_MENU:
                 self._start_calibration_flow()
             elif self.state == STATE_CALIBRATION:
-                if self.calib_state in (CALIB_IDLE, CALIB_FAILED):
+                if self.calib_state == CALIB_IDLE or self.calib_state == CALIB_FAILED:
                     self._start_calibration_process()
-            elif self.state == STATE_CAPTURE:
-                self._trigger_photo_capture(frame)
-            elif self.state == STATE_STAGE_CLEAR:
-                self.stage_clear_timer = 0.0
-
-        elif key in (ord('n'), ord('N')):
-            if self.state == STATE_PLAYING:
-                self._complete_current_stage()
-            elif self.state == STATE_STAGE_CLEAR:
-                self.stage_clear_timer = 0.0
 
         elif key in (ord('r'), ord('R')):
-            if self.state == STATE_CALIBRATION:
-                self._start_calibration_process()
-            elif self.state in (STATE_PLAYING, STATE_GAME_OVER, STATE_VICTORY):
+            if self.state in (STATE_PLAYING, STATE_GAME_OVER, STATE_VICTORY):
                 self.reset_game_state()
                 self._start_calibration_flow()
 
@@ -1077,51 +1139,51 @@ class PuzzleCamsGame:
             if self.state in (STATE_GAME_OVER, STATE_VICTORY):
                 self.reset_game_state()
                 self.state = STATE_MAIN_MENU
-            else:
-                self.mouse_mode = not self.mouse_mode
 
-        elif key in (ord('d'), ord('D')):
+        elif key in (ord('n'), ord('N')):
             if self.state == STATE_PLAYING:
-                self._trigger_deadlock()
+                self._complete_current_stage()
+            elif self.state == STATE_STAGE_CLEAR:
+                self.stage_clear_timer = 0.0
 
-        elif key == ord('1'):
-            if self.state == STATE_PLAYING and TOOL_KNIFE in self.obstacles.get_stage_settings()["active_tools"]:
-                self.equipped_tool = TOOL_KNIFE
-        elif key == ord('2'):
-            if self.state == STATE_PLAYING and TOOL_HAIRDRYER in self.obstacles.get_stage_settings()["active_tools"]:
-                self.equipped_tool = TOOL_HAIRDRYER
-        elif key == ord('3'):
-            if self.state == STATE_PLAYING and TOOL_FLASHLIGHT in self.obstacles.get_stage_settings()["active_tools"]:
-                self.equipped_tool = TOOL_FLASHLIGHT
-        elif key == ord('4'):
-            if self.state == STATE_PLAYING and TOOL_SPONGE in self.obstacles.get_stage_settings()["active_tools"]:
-                self.equipped_tool = TOOL_SPONGE
-        elif key == ord('0'):
+        elif key in (ord('1'), ord('2'), ord('3'), ord('4')):
+            tool_idx = key - ord('0')
+            active_tools = self.obstacles.get_stage_settings()["active_tools"]
+            if tool_idx in active_tools:
+                if self.equipped_tool == tool_idx:
+                    self.equipped_tool = TOOL_NONE
+                else:
+                    self.equipped_tool = tool_idx
+
+        elif key in (ord('0'), ord('q'), ord('Q')):
             self.equipped_tool = TOOL_NONE
 
-
     def _update_and_render_main_menu(self, canvas, dt):
-        for y in range(0, CANVAS_HEIGHT, 40):
-            cv2.line(canvas, (0, y), (CANVAS_WIDTH, y), (26, 22, 34), 1)
-        for x in range(0, CANVAS_WIDTH, 40):
-            cv2.line(canvas, (x, 0), (x, CANVAS_HEIGHT), (26, 22, 34), 1)
-
+        bg = self.assets.get_background("bg_main_menu")
+        if bg is not None:
+            canvas[:] = bg
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, CANVAS_HEIGHT), (15, 12, 20), -1)
+            cv2.addWeighted(overlay, 0.35, canvas, 0.65, 0, canvas)
+        else:
+            for y in range(0, CANVAS_HEIGHT, 40):
+                cv2.line(canvas, (0, y), (CANVAS_WIDTH, y), (26, 22, 34), 1)
+            for x in range(0, CANVAS_WIDTH, 40):
+                cv2.line(canvas, (x, 0), (x, CANVAS_HEIGHT), (26, 22, 34), 1)
 
         title = "PUZZLE CAMS"
-        (tw, _), _ = cv2.getTextSize(title, cv2.FONT_HERSHEY_TRIPLEX, 2.4, 3)
+        (tw, _), _ = cv2.getTextSize(title, cv2.FONT_HERSHEY_TRIPLEX, 2.5, 3)
         tx = (CANVAS_WIDTH - tw) // 2
-        cv2.putText(canvas, title, (tx + 4, 214), cv2.FONT_HERSHEY_TRIPLEX, 2.4, (15, 12, 20), 4, cv2.LINE_AA)
-        cv2.putText(canvas, title, (tx, 210), cv2.FONT_HERSHEY_TRIPLEX, 2.4, COLOR_NEON_CYAN, 3, cv2.LINE_AA)
-
+        cv2.putText(canvas, title, (tx + 4, 214), cv2.FONT_HERSHEY_TRIPLEX, 2.5, (10, 8, 14), 6, cv2.LINE_AA)
+        cv2.putText(canvas, title, (tx, 210), cv2.FONT_HERSHEY_TRIPLEX, 2.5, COLOR_NEON_CYAN, 3, cv2.LINE_AA)
 
         hover_play = self.is_mouse_inside(self.btn_main_menu_play)
-        UIRenderer.draw_button(canvas, self.btn_main_menu_play, "MAIN", hover_play, COLOR_NEON_GREEN, "[SPACE]")
+        UIRenderer.draw_button(canvas, self.btn_main_menu_play, "MAIN", hover_play, COLOR_NEON_GREEN)
         if hover_play and self.mouse_clicked:
             self._start_calibration_flow()
 
-
         hover_exit = self.is_mouse_inside(self.btn_main_menu_exit)
-        UIRenderer.draw_button(canvas, self.btn_main_menu_exit, "KELUAR", hover_exit, COLOR_NEON_RED, "[ESC]")
+        UIRenderer.draw_button(canvas, self.btn_main_menu_exit, "KELUAR", hover_exit, COLOR_NEON_RED)
         if hover_exit and self.mouse_clicked:
             self.running = False
 
@@ -1144,21 +1206,29 @@ class PuzzleCamsGame:
         self.calib_samples_area = []
         self.calib_timer = 0.0
 
-
     def _update_and_render_calibration(self, canvas, frame, dt):
-        cam_resized = cv2.resize(frame, (CANVAS_WIDTH, CANVAS_HEIGHT), interpolation=cv2.INTER_LINEAR)
-        canvas[:] = cam_resized
+        bg = self.assets.get_background("bg_calibration")
+        if bg is not None:
+            canvas[:] = bg
+        else:
+            canvas[:] = (25, 20, 30)
 
-        overlay = np.zeros_like(canvas)
-        canvas[:] = cv2.addWeighted(canvas, 0.65, overlay, 0.35, 0)
-
-
-        cv2.rectangle(canvas, (0, 0), (CANVAS_WIDTH, 70), COLOR_PANEL_BG, -1)
-        cv2.line(canvas, (0, 70), (CANVAS_WIDTH, 70), COLOR_NEON_CYAN, 2)
+        overlay = canvas.copy()
+        cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, 70), (20, 18, 26), -1)
+        cv2.addWeighted(overlay, 0.85, canvas, 0.15, 0, canvas)
+        cv2.line(canvas, (0, 70), (CANVAS_WIDTH, 70), COLOR_NEON_GOLD, 2)
         cv2.putText(canvas, "KALIBRASI WARNA KURSOR", (40, 46), cv2.FONT_HERSHEY_TRIPLEX, 0.95, COLOR_NEON_CYAN, 2, cv2.LINE_AA)
 
+        cam_w, cam_h = 640, 480
+        cam_x = (CANVAS_WIDTH - cam_w) // 2
+        cam_y = 90
+        cam_resized = cv2.resize(frame, (cam_w, cam_h), interpolation=cv2.INTER_LINEAR)
+        canvas[cam_y:cam_y+cam_h, cam_x:cam_x+cam_w] = cam_resized
+        cv2.rectangle(canvas, (cam_x - 3, cam_y - 3), (cam_x + cam_w + 3, cam_y + cam_h + 3), COLOR_NEON_GOLD, 3)
 
-        rx, ry, rw, rh = self.calib_roi
+        rw, rh = 180, 180
+        rx = cam_x + (cam_w - rw) // 2
+        ry = cam_y + (cam_h - rh) // 2
         roi_color = COLOR_NEON_GREEN if self.calib_state == CALIB_SUCCESS else (COLOR_NEON_RED if self.calib_state == CALIB_FAILED else COLOR_NEON_GOLD)
         cv2.rectangle(canvas, (rx, ry), (rx + rw, ry + rh), roi_color, 3)
 
@@ -1166,14 +1236,12 @@ class PuzzleCamsGame:
         cv2.line(canvas, (cx - 15, cy), (cx + 15, cy), roi_color, 2)
         cv2.line(canvas, (cx, cy - 15), (cx, cy + 15), roi_color, 2)
 
-
         h_cam, w_cam = frame.shape[:2]
-        cam_rx = int(rx * (w_cam / CANVAS_WIDTH))
-        cam_ry = int(ry * (h_cam / CANVAS_HEIGHT))
-        cam_rw = int(rw * (w_cam / CANVAS_WIDTH))
-        cam_rh = int(rh * (h_cam / CANVAS_HEIGHT))
+        cam_rx = int((rx - cam_x) * (w_cam / cam_w))
+        cam_ry = int((ry - cam_y) * (h_cam / cam_h))
+        cam_rw = int(rw * (w_cam / cam_w))
+        cam_rh = int(rh * (h_cam / cam_h))
         roi_frame = frame[cam_ry:cam_ry+cam_rh, cam_rx:cam_rx+cam_rw]
-
 
         if self.calib_state == CALIB_PREPARING:
             self.calib_timer += dt
@@ -1199,252 +1267,288 @@ class PuzzleCamsGame:
                 self.calib_timer = 0.0
 
         elif self.calib_state == CALIB_CALIBRATING:
+            self.calib_timer += dt
+            self.calib_progress = min(0.95, 0.75 + (self.calib_timer / 0.4) * 0.20)
             self.calib_status_text = "Mengkalibrasi warna"
-            self.calib_progress = 0.85
-            success, err_msg = self._compute_and_validate_calibration()
-            if success:
-                self.calib_state = CALIB_SUCCESS
-                self.calib_progress = 1.0
-                self.calib_status_text = "Kalibrasi selesai"
-                self.calib_timer = 0.0
-            else:
-                self.calib_state = CALIB_FAILED
-                self.calib_error_message = err_msg
+
+            if self.calib_timer >= 0.4:
+                success = self._finalize_calibration()
+                if success:
+                    self.calib_state = CALIB_SUCCESS
+                    self.calib_progress = 1.0
+                    self.calib_status_text = "Kalibrasi selesai"
+                    self.calib_timer = 0.0
+                else:
+                    self.calib_state = CALIB_FAILED
+                    self.calib_status_text = "Kalibrasi gagal"
+                    self.calib_timer = 0.0
 
         elif self.calib_state == CALIB_SUCCESS:
             self.calib_timer += dt
             self.calib_progress = 1.0
-            self.calib_status_text = "Kalibrasi selesai! Memulai permainan..."
-            if self.calib_timer >= 1.0:
+            self.calib_status_text = "Kalibrasi selesai"
+            if self.calib_timer >= 1.2:
                 self.state = STATE_CAPTURE
                 self.capture_fist_timer = 0.0
                 self.capture_countdown = -1.0
 
+        elif self.calib_state == CALIB_FAILED:
+            self.calib_status_text = "Kalibrasi gagal"
 
-        self._render_calibration_progress_bar(canvas)
+        pb_w = 600
+        pb_h = 24
+        pb_x = (CANVAS_WIDTH - pb_w) // 2
+        pb_y = cam_y + cam_h + 16
 
+        cv2.rectangle(canvas, (pb_x - 2, pb_y - 2), (pb_x + pb_w + 2, pb_y + pb_h + 2), (40, 36, 50), -1)
+        cv2.rectangle(canvas, (pb_x, pb_y), (pb_x + pb_w, pb_y + pb_h), (20, 18, 25), -1)
 
-        btn_action_rect = ((CANVAS_WIDTH - 220) // 2, ry + rh + 100, 220, 50)
-        hover_action = self.is_mouse_inside(btn_action_rect)
+        fill_w = int(pb_w * max(0.0, min(1.0, self.calib_progress)))
+        if fill_w > 0:
+            bar_color = COLOR_NEON_GREEN if self.calib_state == CALIB_SUCCESS else (COLOR_NEON_RED if self.calib_state == CALIB_FAILED else COLOR_NEON_GOLD)
+            cv2.rectangle(canvas, (pb_x, pb_y), (pb_x + fill_w, pb_y + pb_h), bar_color, -1)
+
+        cv2.rectangle(canvas, (pb_x, pb_y), (pb_x + pb_w, pb_y + pb_h), (90, 85, 110), 1)
+
+        pct_text = f"{int(self.calib_progress * 100)}%"
+        cv2.putText(canvas, pct_text, (pb_x + pb_w + 14, pb_y + pb_h - 4), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
+
+        status_display = self.calib_status_text
+        if self.calib_state == CALIB_FAILED and self.calib_error_message:
+            status_display += f" - {self.calib_error_message}"
+        cv2.putText(canvas, status_display, (pb_x, pb_y + pb_h + 24), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_NEON_CYAN, 1, cv2.LINE_AA)
 
         if self.calib_state == CALIB_IDLE:
-            cv2.putText(canvas, "Posisikan tangan di dalam kotak, lalu tekan [SPACE] atau tombol Mulai", (260, ry - 20), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
-            UIRenderer.draw_button(canvas, btn_action_rect, "MULAI", hover_action, COLOR_NEON_GREEN, "[SPACE]")
-            if hover_action and self.mouse_clicked:
-                self._start_calibration_process()
-
+            inst = "Letakkan tangan di kotak ROI"
+            cv2.putText(canvas, inst, (pb_x, pb_y - 12), cv2.FONT_HERSHEY_DUPLEX, 0.65, COLOR_NEON_GOLD, 1, cv2.LINE_AA)
         elif self.calib_state == CALIB_FAILED:
-            cv2.putText(canvas, self.calib_error_message, (310, ry - 20), cv2.FONT_HERSHEY_DUPLEX, 0.65, COLOR_NEON_RED, 1, cv2.LINE_AA)
-            UIRenderer.draw_button(canvas, btn_action_rect, "COBA LAGI", hover_action, COLOR_NEON_GOLD, "[SPACE]")
-            if hover_action and self.mouse_clicked:
-                self._start_calibration_process()
+            inst = "Tekan [SPACE] untuk mencoba kalibrasi ulang"
+            cv2.putText(canvas, inst, (pb_x, pb_y - 12), cv2.FONT_HERSHEY_DUPLEX, 0.65, COLOR_NEON_RED, 1, cv2.LINE_AA)
+        elif self.calib_state == CALIB_SUCCESS:
+            inst = "Sistem siap! Memulai game..."
+            cv2.putText(canvas, inst, (pb_x, pb_y - 12), cv2.FONT_HERSHEY_DUPLEX, 0.65, COLOR_NEON_GREEN, 1, cv2.LINE_AA)
 
-
-        btn_back_rect = (40, CANVAS_HEIGHT - 65, 180, 45)
-        hover_back = self.is_mouse_inside(btn_back_rect)
-        UIRenderer.draw_button(canvas, btn_back_rect, "MENU UTAMA", hover_back, COLOR_NEON_CYAN, "[ESC]")
-        if hover_back and self.mouse_clicked:
-            self.state = STATE_MAIN_MENU
-
-    def _compute_and_validate_calibration(self):
-        if self.using_simulated_camera:
-            self.tracker.is_calibrated = True
-            self.tracker.ref_area = 12000
-            self.tracker.calibrated_bgr = (180, 160, 210)
-            return True, ""
-
+    def _finalize_calibration(self):
         if not self.calib_samples_hsv:
-            return False, "Tidak ada frame sampel yang terbaca dari kamera."
+            self.calib_error_message = "Tidak ada sampel warna"
+            return False
 
-        all_pixels = np.vstack([sample.reshape(-1, 3) for sample in self.calib_samples_hsv])
-        h_vals = all_pixels[:, 0]
-        s_vals = all_pixels[:, 1]
-        v_vals = all_pixels[:, 2]
+        all_h = []
+        all_s = []
+        all_v = []
+        for s in self.calib_samples_hsv:
+            all_h.extend(s[:, :, 0].flatten())
+            all_s.extend(s[:, :, 1].flatten())
+            all_v.extend(s[:, :, 2].flatten())
 
-        v_mean = np.mean(v_vals)
-        s_mean = np.mean(s_vals)
+        all_h = np.array(all_h)
+        all_s = np.array(all_s)
+        all_v = np.array(all_v)
 
-        if v_mean < 35:
-            return False, "Pencahayaan terlalu gelap! Harap gunakan ruangan yang lebih terang."
-        if s_mean < 20:
-            return False, "Saturasi warna terlalu rendah (warna tidak terbaca jelas)."
+        h_mean = np.mean(all_h)
+        h_std = np.std(all_h)
+        s_mean = np.mean(all_s)
+        v_mean = np.mean(all_v)
 
-        h_med = np.median(h_vals)
-        s_med = np.median(s_vals)
-        v_med = np.median(v_vals)
+        if s_mean < 15 and v_mean < 30:
+            self.calib_error_message = "Objek terlalu gelap/kurang jenuh"
+            return False
 
-        h_low = int(h_med - 16)
-        h_high = int(h_med + 16)
+        h_rad = all_h * (2.0 * np.pi / 180.0)
+        mean_sin = np.mean(np.sin(h_rad))
+        mean_cos = np.mean(np.cos(h_rad))
+        circular_mean = (np.arctan2(mean_sin, mean_cos) * (180.0 / (2.0 * np.pi))) % 180.0
 
+        circular_dist = np.abs(all_h - circular_mean)
+        circular_dist = np.minimum(circular_dist, 180.0 - circular_dist)
+        circ_std = np.sqrt(np.mean(circular_dist ** 2))
 
-        if h_low < 0:
+        h_margin = max(14, int(circ_std * 2.2))
+        s_min = max(20, int(np.percentile(all_s, 5)) - 25)
+        s_max = min(255, int(np.percentile(all_s, 95)) + 30)
+        v_min = max(30, int(np.percentile(all_v, 5)) - 30)
+        v_max = min(255, int(np.percentile(all_v, 95)) + 30)
+
+        h_low = circular_mean - h_margin
+        h_high = circular_mean + h_margin
+
+        if h_low < 0 or h_high > 180:
             self.tracker.wrap_hue = True
-            self.tracker.lower_hsv1 = np.array([0, max(30, int(s_med - 45)), max(40, int(v_med - 55))], dtype=np.uint8)
-            self.tracker.upper_hsv1 = np.array([h_high, min(255, int(s_med + 60)), min(255, int(v_med + 65))], dtype=np.uint8)
-            self.tracker.lower_hsv2 = np.array([180 + h_low, max(30, int(s_med - 45)), max(40, int(v_med - 55))], dtype=np.uint8)
-            self.tracker.upper_hsv2 = np.array([179, min(255, int(s_med + 60)), min(255, int(v_med + 65))], dtype=np.uint8)
-        elif h_high > 179:
-            self.tracker.wrap_hue = True
-            self.tracker.lower_hsv1 = np.array([h_low, max(30, int(s_med - 45)), max(40, int(v_med - 55))], dtype=np.uint8)
-            self.tracker.upper_hsv1 = np.array([179, min(255, int(s_med + 60)), min(255, int(v_med + 65))], dtype=np.uint8)
-            self.tracker.lower_hsv2 = np.array([0, max(30, int(s_med - 45)), max(40, int(v_med - 55))], dtype=np.uint8)
-            self.tracker.upper_hsv2 = np.array([h_high - 180, min(255, int(s_med + 60)), min(255, int(v_med + 65))], dtype=np.uint8)
+            if h_low < 0:
+                self.tracker.lower_hsv1 = np.array([0, s_min, v_min], dtype=np.uint8)
+                self.tracker.upper_hsv1 = np.array([int(h_high), s_max, v_max], dtype=np.uint8)
+                self.tracker.lower_hsv2 = np.array([int(180 + h_low), s_min, v_min], dtype=np.uint8)
+                self.tracker.upper_hsv2 = np.array([180, s_max, v_max], dtype=np.uint8)
+            else:
+                self.tracker.lower_hsv1 = np.array([int(h_low), s_min, v_min], dtype=np.uint8)
+                self.tracker.upper_hsv1 = np.array([180, s_max, v_max], dtype=np.uint8)
+                self.tracker.lower_hsv2 = np.array([0, s_min, v_min], dtype=np.uint8)
+                self.tracker.upper_hsv2 = np.array([int(h_high - 180), s_max, v_max], dtype=np.uint8)
         else:
             self.tracker.wrap_hue = False
-            self.tracker.lower_hsv1 = np.array([h_low, max(30, int(s_med - 45)), max(40, int(v_med - 55))], dtype=np.uint8)
-            self.tracker.upper_hsv1 = np.array([h_high, min(255, int(s_med + 60)), min(255, int(v_med + 65))], dtype=np.uint8)
+            self.tracker.lower_hsv1 = np.array([int(h_low), s_min, v_min], dtype=np.uint8)
+            self.tracker.upper_hsv1 = np.array([int(h_high), s_max, v_max], dtype=np.uint8)
             self.tracker.lower_hsv2 = None
             self.tracker.upper_hsv2 = None
 
-        test_mask = self.tracker.apply_color_segmentation(self.calib_samples_hsv[-1])
-        clean_test = PCVEngine.clean_hand_mask(test_mask)
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(clean_test, connectivity=8)
-
-        max_a = 0
-        for i in range(1, num_labels):
-            a = stats[i, cv2.CC_STAT_AREA]
-            if a > max_a:
-                max_a = a
-
-        if max_a < 600:
-            return False, "Target tidak terdeteksi. Posisikan tangan menutupi kotak."
-
-        self.tracker.ref_area = max(max_a * 2, 4500)
+        rw, rh = self.calib_roi[2], self.calib_roi[3]
+        self.tracker.ref_area = max(5000, int((rw * rh) * 0.45))
         self.tracker.is_calibrated = True
-        return True, ""
-
-    def _render_calibration_progress_bar(self, canvas):
-        rx, ry, rw, rh = self.calib_roi
-        bar_w = 460
-        bar_h = 24
-        bar_x = (CANVAS_WIDTH - bar_w) // 2
-        bar_y = ry + rh + 20
-
-        cv2.rectangle(canvas, (bar_x - 2, bar_y - 2), (bar_x + bar_w + 2, bar_y + bar_h + 2), (40, 35, 50), -1)
-        cv2.rectangle(canvas, (bar_x - 2, bar_y - 2), (bar_x + bar_w + 2, bar_y + bar_h + 2), COLOR_NEON_CYAN, 1)
-
-        fill_w = int(bar_w * np.clip(self.calib_progress, 0.0, 1.0))
-        if fill_w > 0:
-            fill_col = COLOR_NEON_GREEN if self.calib_progress >= 1.0 else COLOR_NEON_GOLD
-            cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + fill_w, bar_y + bar_h), fill_col, -1)
-
-        percent_str = f"{int(self.calib_progress * 100)}%"
-        cv2.putText(canvas, percent_str, (bar_x + bar_w + 14, bar_y + 18), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
-        cv2.putText(canvas, self.calib_status_text, (bar_x, bar_y + bar_h + 26), cv2.FONT_HERSHEY_DUPLEX, 0.65, COLOR_NEON_CYAN, 1, cv2.LINE_AA)
-
-        swatch_size = 32
-        swatch_x = bar_x - swatch_size - 16
-        swatch_y = bar_y - 4
-        cv2.rectangle(canvas, (swatch_x, swatch_y), (swatch_x + swatch_size, swatch_y + swatch_size), self.tracker.calibrated_bgr, -1)
-        cv2.rectangle(canvas, (swatch_x, swatch_y), (swatch_x + swatch_size, swatch_y + swatch_size), COLOR_TEXT_WHITE, 1)
-
+        return True
 
     def _update_and_render_capture(self, canvas, frame, dt):
-        cam_resized = cv2.resize(frame, (CANVAS_WIDTH, CANVAS_HEIGHT), interpolation=cv2.INTER_LINEAR)
-        canvas[:] = cam_resized
-
-        bx, by = (CANVAS_WIDTH - 450) // 2, (CANVAS_HEIGHT - 450) // 2
-        cv2.rectangle(canvas, (bx, by), (bx + 450, by + 450), COLOR_NEON_CYAN, 3)
-
-        header_banner = f"STAGE {self.stage}: POSE DAN KEPALKAN TANGAN UNTUK JEPRET"
-        cv2.rectangle(canvas, (0, 0), (CANVAS_WIDTH, 70), COLOR_PANEL_BG, -1)
-        cv2.putText(canvas, header_banner, (240, 48), cv2.FONT_HERSHEY_TRIPLEX, 0.95, COLOR_NEON_GOLD, 2, cv2.LINE_AA)
-
-        cv2.putText(canvas, "Kepalkan tangan selama 1.5 detik atau tekan [SPACE] / [C]", (330, CANVAS_HEIGHT - 40), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
-
-        if self.tracker.is_fist:
-            self.capture_fist_timer += dt
-            if self.capture_fist_timer >= HOLD_TIME_CAPTURE_FIST and self.capture_countdown < 0:
-                self.capture_countdown = 3.0
+        bg = self.assets.get_background("bg_calibration")
+        if bg is not None:
+            canvas[:] = bg
         else:
-            if self.capture_countdown < 0:
+            canvas[:] = (20, 18, 26)
+
+        cam_w, cam_h = 640, 480
+        cam_x = (CANVAS_WIDTH - cam_w) // 2
+        cam_y = 100
+        cam_resized = cv2.resize(frame, (cam_w, cam_h), interpolation=cv2.INTER_LINEAR)
+        canvas[cam_y:cam_y+cam_h, cam_x:cam_x+cam_w] = cam_resized
+        cv2.rectangle(canvas, (cam_x - 3, cam_y - 3), (cam_x + cam_w + 3, cam_y + cam_h + 3), COLOR_NEON_GOLD, 3)
+
+        box_size = 400
+        bx = cam_x + (cam_w - box_size) // 2
+        by = cam_y + (cam_h - box_size) // 2
+        cv2.rectangle(canvas, (bx, by), (bx + box_size, by + box_size), COLOR_NEON_CYAN, 3)
+
+        corner_len = 25
+        corners = [(bx, by), (bx + box_size, by), (bx, by + box_size), (bx + box_size, by + box_size)]
+        for cx, cy in corners:
+            dx = 1 if cx == bx else -1
+            dy = 1 if cy == by else -1
+            cv2.line(canvas, (cx, cy), (cx + dx * corner_len, cy), COLOR_NEON_GOLD, 4)
+            cv2.line(canvas, (cx, cy), (cx, cy + dy * corner_len), COLOR_NEON_GOLD, 4)
+
+        if self.capture_countdown > 0.0:
+            self.capture_countdown -= dt
+            sec = int(math.ceil(self.capture_countdown))
+            cd_text = str(sec)
+            (tw, th), _ = cv2.getTextSize(cd_text, cv2.FONT_HERSHEY_TRIPLEX, 3.5, 4)
+            tx = cam_x + (cam_w - tw) // 2
+            ty = cam_y + (cam_h + th) // 2
+            cv2.putText(canvas, cd_text, (tx, ty), cv2.FONT_HERSHEY_TRIPLEX, 3.5, COLOR_NEON_GOLD, 4, cv2.LINE_AA)
+
+            if self.capture_countdown <= 0.0:
+                self._snap_photo_and_start_stage(frame)
+                return
+        else:
+            if self.tracker.is_fist:
+                self.capture_fist_timer += dt
+                fill_ratio = min(1.0, self.capture_fist_timer / HOLD_TIME_CAPTURE_FIST)
+                gauge_w = int(box_size * fill_ratio)
+                cv2.rectangle(canvas, (bx, by + box_size + 15), (bx + gauge_w, by + box_size + 25), COLOR_NEON_GREEN, -1)
+                cv2.rectangle(canvas, (bx, by + box_size + 15), (bx + box_size, by + box_size + 25), COLOR_TEXT_WHITE, 1)
+
+                if self.capture_fist_timer >= HOLD_TIME_CAPTURE_FIST:
+                    self.capture_countdown = 3.0
+            else:
                 self.capture_fist_timer = max(0.0, self.capture_fist_timer - dt * 2.0)
 
-        if self.capture_countdown < 0 and self.capture_fist_timer > 0.0:
-            prog = min(1.0, self.capture_fist_timer / HOLD_TIME_CAPTURE_FIST)
-            bar_w = int(450 * prog)
-            cv2.rectangle(canvas, (bx, by + 455), (bx + bar_w, by + 465), COLOR_NEON_GOLD, -1)
+        inst = "Berpose di dalam bingkai, kepalkan tangan untuk ambil foto!"
+        (iw, _), _ = cv2.getTextSize(inst, cv2.FONT_HERSHEY_DUPLEX, 0.7, 1)
+        cv2.putText(canvas, inst, ((CANVAS_WIDTH - iw) // 2, 60), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_NEON_GOLD, 1, cv2.LINE_AA)
 
-        if self.capture_countdown > 0:
-            self.capture_countdown -= dt
-            count_num = int(math.ceil(self.capture_countdown))
-            if count_num > 0:
-                count_str = str(count_num)
-                cv2.circle(canvas, (CANVAS_WIDTH // 2, CANVAS_HEIGHT // 2), 65, (20, 20, 20), -1)
-                cv2.circle(canvas, (CANVAS_WIDTH // 2, CANVAS_HEIGHT // 2), 65, COLOR_NEON_GOLD, 3, cv2.LINE_AA)
-                cv2.putText(canvas, count_str, (CANVAS_WIDTH // 2 - 20, CANVAS_HEIGHT // 2 + 25), cv2.FONT_HERSHEY_TRIPLEX, 2.5, COLOR_TEXT_WHITE, 3, cv2.LINE_AA)
-            else:
-                self._trigger_photo_capture(frame)
+        if self.flash_intensity > 0.0:
+            canvas[:] = PCVEngine.apply_flash_effect(canvas, self.flash_intensity)
+            self.flash_intensity = max(0.0, self.flash_intensity - dt * 3.5)
 
-        self.ui.render_pip_camera(canvas, frame, self.tracker)
-
-    def _trigger_photo_capture(self, frame):
-        cam_resized = cv2.resize(frame, (CANVAS_WIDTH, CANVAS_HEIGHT), interpolation=cv2.INTER_LINEAR)
-        bx = (CANVAS_WIDTH - BOARD_SIZE) // 2
-        by = (CANVAS_HEIGHT - BOARD_SIZE) // 2
-        photo_450 = cam_resized[by:by+BOARD_SIZE, bx:bx+BOARD_SIZE].copy()
-
-        self.puzzle.set_captured_photo(photo_450)
-
-
-        min_m, max_m = STAGE_SHUFFLE_CONFIG.get(self.stage, (2, 3))
-        moves = random.randint(min_m, max_m)
-
-        self.puzzle.shuffle_legal_moves(moves)
-        self.obstacles.reset_for_stage(self.stage)
-        self.equipped_tool = TOOL_NONE
-        self.held_tile_grid_pos = -1
-        self.stage_start_time = time.time()
-
+    def _snap_photo_and_start_stage(self, frame):
         self.flash_intensity = 1.0
+        cropped_450 = PCVEngine.crop_square_grid(frame, BOARD_SIZE)
+        self.puzzle.set_captured_photo(cropped_450)
+
+        min_moves, max_moves = STAGE_SHUFFLE_CONFIG.get(self.stage, (2, 3))
+        moves = random.randint(min_moves, max_moves)
+        self.puzzle.shuffle_legal_moves(moves)
+
+        self.obstacles.reset_for_stage(self.stage)
+        self.stage_start_time = time.time()
         self.state = STATE_PLAYING
 
-
     def _update_and_render_playing(self, canvas, frame, dt):
-        cx, cy = self.tracker.cursor_x, self.tracker.cursor_y
+        bg = self.assets.get_background("bg_gameplay")
+        if bg is not None:
+            canvas[:] = bg
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, CANVAS_HEIGHT), (15, 12, 20), -1)
+            cv2.addWeighted(overlay, 0.25, canvas, 0.75, 0, canvas)
+        else:
+            canvas[:] = COLOR_BG_DARK
+
+        if self.active_tool_anim is not None:
+            self.active_tool_anim["elapsed"] += dt
+            prog = min(1.0, self.active_tool_anim["elapsed"] / max(0.001, self.active_tool_anim["duration"]))
+            if prog >= 0.50 and not self.active_tool_anim["cleared"]:
+                g_pos = self.active_tool_anim["grid_pos"]
+                if g_pos in self.obstacles.grid_obstacles:
+                    del self.obstacles.grid_obstacles[g_pos]
+                if g_pos in self.obstacles.obstacle_states:
+                    del self.obstacles.obstacle_states[g_pos]
+                self.obstacles.tile_idle_timers[g_pos] = 0.0
+                self.score += 50
+                self.active_tool_anim["cleared"] = True
+
+            if prog >= 1.0:
+                self.active_tool_anim = None
+                self.hover_grid_timer = 0.0
+                self.hover_grid_pos = -1
+
+        empty_grid_pos = self.puzzle.tiles.index(self.puzzle.empty_val)
         current_hover_grid = -1
 
-        if (BOARD_X <= cx < BOARD_X + BOARD_SIZE) and (BOARD_Y <= cy < BOARD_Y + BOARD_SIZE):
-            col = (cx - BOARD_X) // TILE_SIZE
-            row = (cy - BOARD_Y) // TILE_SIZE
-            current_hover_grid = int(row * GRID_COLS + col)
+        cx, cy = self.tracker.cursor_x, self.tracker.cursor_y
+        if BOARD_X <= cx < BOARD_X + BOARD_SIZE and BOARD_Y <= cy < BOARD_Y + BOARD_SIZE:
+            c_col = (cx - BOARD_X) // TILE_SIZE
+            c_row = (cy - BOARD_Y) // TILE_SIZE
+            if 0 <= c_col < GRID_COLS and 0 <= c_row < GRID_ROWS:
+                current_hover_grid = c_row * GRID_COLS + c_col
 
         current_hover_tool = TOOL_NONE
         for t_id, t_info in self.ui.tool_slots.items():
             tx, ty, tw, th = t_info["rect"]
-            if (tx <= cx < tx + tw) and (ty <= cy < ty + th):
-                if t_id in self.obstacles.get_stage_settings()["active_tools"]:
-                    current_hover_tool = t_id
-                    break
+            if tx <= cx <= tx + tw and ty <= cy <= ty + th:
+                current_hover_tool = t_id
+                break
 
-        empty_grid_pos = self.puzzle.tiles.index(self.puzzle.empty_val)
         self.obstacles.update(dt, current_hover_grid, empty_grid_pos)
 
         if self.obstacles.check_deadlock(self.puzzle):
             self._trigger_deadlock()
 
+        if self.tracker.is_fist:
+            self.tracker.open_hand_timer = 0.0
+        else:
+            if self.equipped_tool != TOOL_NONE and self.tracker.open_hand_timer >= AUTO_DROP_OPEN_TIME:
+                self.equipped_tool = TOOL_NONE
+
         action_progress = 0.0
 
-
-        if self.tracker.is_fist:
-
+        if self.tracker.is_fist and self.active_tool_anim is None:
             if current_hover_tool != TOOL_NONE:
-                if current_hover_tool == self.hover_tool_id:
-                    self.hover_tool_timer += dt
+                active_tools = self.obstacles.get_stage_settings()["active_tools"]
+                if current_hover_tool in active_tools:
+                    if current_hover_tool == self.hover_tool_id:
+                        self.hover_tool_timer += dt
+                    else:
+                        self.hover_tool_id = current_hover_tool
+                        self.hover_tool_timer = 0.0
+
+                    action_progress = min(1.0, self.hover_tool_timer / HOLD_TIME_EQUIP)
+                    if self.hover_tool_timer >= HOLD_TIME_EQUIP:
+                        if self.equipped_tool == current_hover_tool:
+                            self.equipped_tool = TOOL_NONE
+                        else:
+                            self.equipped_tool = current_hover_tool
+                        self.hover_tool_timer = 0.0
+                        self.hover_tool_id = TOOL_NONE
                 else:
-                    self.hover_tool_id = current_hover_tool
                     self.hover_tool_timer = 0.0
 
-                action_progress = min(1.0, self.hover_tool_timer / HOLD_TIME_EQUIP)
-                if self.hover_tool_timer >= HOLD_TIME_EQUIP:
-                    self.equipped_tool = current_hover_tool
-                    self.hover_tool_timer = 0.0
-            else:
-                self.hover_tool_timer = 0.0
-                self.hover_tool_id = TOOL_NONE
-
-
-            if self.equipped_tool != TOOL_NONE and current_hover_grid != -1:
+            elif self.equipped_tool != TOOL_NONE and current_hover_grid != -1:
                 active_obs = self.obstacles.grid_obstacles.get(current_hover_grid, OBSTACLE_NONE)
                 matched_tool = TOOL_MATCH.get(active_obs, TOOL_NONE)
 
@@ -1457,12 +1561,16 @@ class PuzzleCamsGame:
 
                     action_progress = min(1.0, self.hover_grid_timer / HOLD_TIME_CLEAR)
                     if self.hover_grid_timer >= HOLD_TIME_CLEAR:
-                        del self.obstacles.grid_obstacles[current_hover_grid]
+                        self.active_tool_anim = {
+                            "tool": self.equipped_tool,
+                            "grid_pos": current_hover_grid,
+                            "elapsed": 0.0,
+                            "duration": 0.55,
+                            "cleared": False
+                        }
                         self.hover_grid_timer = 0.0
-                        self.hover_grid_pos = -1
                 else:
                     self.hover_grid_timer = 0.0
-
 
             elif self.equipped_tool == TOOL_NONE and current_hover_grid != -1 and current_hover_grid != empty_grid_pos:
                 can_move = self.puzzle.can_slide(current_hover_grid)
@@ -1493,15 +1601,12 @@ class PuzzleCamsGame:
             else:
                 self.hover_grid_timer = 0.0
 
-        else:
-
-
+        elif self.active_tool_anim is None:
             self.held_tile_grid_pos = -1
             self.hover_grid_timer = 0.0
             self.hover_tool_timer = 0.0
             self.hover_grid_pos = -1
             self.hover_tool_id = TOOL_NONE
-
 
         active_tools = self.obstacles.get_stage_settings()["active_tools"]
         elapsed_sec = time.time() - self.stage_start_time
@@ -1510,9 +1615,9 @@ class PuzzleCamsGame:
         tool_hover_prog = action_progress if current_hover_tool != TOOL_NONE else 0.0
         self.ui.render_tool_panels(canvas, active_tools, self.equipped_tool, current_hover_tool, tool_hover_prog)
         tile_hover_prog = action_progress if current_hover_grid != -1 else 0.0
-        self.ui.render_puzzle_board(canvas, self.puzzle, self.obstacles.grid_obstacles, current_hover_grid, tile_hover_prog, self.held_tile_grid_pos)
+        self.ui.render_puzzle_board(canvas, self.puzzle, self.obstacles.grid_obstacles, self.obstacles.obstacle_states, current_hover_grid, tile_hover_prog, self.held_tile_grid_pos)
         self.ui.render_pip_camera(canvas, frame, self.tracker)
-        self.ui.render_cursor(canvas, self.tracker, self.equipped_tool)
+        self.ui.render_cursor(canvas, self.tracker, self.equipped_tool, self.active_tool_anim)
 
         if self.flash_intensity > 0.0:
             canvas[:] = PCVEngine.apply_flash_effect(canvas, self.flash_intensity)
@@ -1543,6 +1648,15 @@ class PuzzleCamsGame:
         self.state = STATE_STAGE_CLEAR
 
     def _update_and_render_stage_clear(self, canvas, dt):
+        bg = self.assets.get_background("bg_gameplay")
+        if bg is not None:
+            canvas[:] = bg
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, CANVAS_HEIGHT), (15, 12, 20), -1)
+            cv2.addWeighted(overlay, 0.35, canvas, 0.65, 0, canvas)
+        else:
+            canvas[:] = COLOR_BG_DARK
+
         self.stage_clear_timer -= dt
 
         cv2.rectangle(canvas, (0, 0), (CANVAS_WIDTH, 80), COLOR_PANEL_BG, -1)
@@ -1567,12 +1681,20 @@ class PuzzleCamsGame:
             else:
                 self.state = STATE_VICTORY
 
-
     def _update_and_render_end(self, canvas, dt):
+        bg = self.assets.get_background("bg_gameplay")
+        if bg is not None:
+            canvas[:] = bg
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (0, 0), (CANVAS_WIDTH, CANVAS_HEIGHT), (15, 12, 20), -1)
+            cv2.addWeighted(overlay, 0.40, canvas, 0.60, 0, canvas)
+        else:
+            canvas[:] = COLOR_BG_DARK
+
         is_victory = (self.state == STATE_VICTORY)
 
         if is_victory:
-            title = "SELAMAT! ANDA MENANG!"
+            title = "Game Completed"
             title_col = COLOR_NEON_GOLD
 
             if self.puzzle.full_photo is not None:
@@ -1600,25 +1722,22 @@ class PuzzleCamsGame:
 
         score_text = f"SKOR AKHIR: {self.score:05d}  |  STAGE: {self.stage}"
         (st_w, _), _ = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_DUPLEX, 0.7, 1)
-        cv2.putText(canvas, score_text, ((CANVAS_WIDTH - st_w) // 2, 430), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
-
+        cv2.putText(canvas, score_text, ((CANVAS_WIDTH - st_w) // 2, 440), cv2.FONT_HERSHEY_DUPLEX, 0.7, COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
 
         hover_retry = self.is_mouse_inside(self.btn_gameover_retry)
-        UIRenderer.draw_button(canvas, self.btn_gameover_retry, "MAIN LAGI", hover_retry, COLOR_NEON_GREEN, "[R]")
+        UIRenderer.draw_button(canvas, self.btn_gameover_retry, "MAIN LAGI", hover_retry, COLOR_NEON_GREEN)
         if hover_retry and self.mouse_clicked:
             self.reset_game_state()
             self._start_calibration_flow()
 
-
         hover_menu = self.is_mouse_inside(self.btn_gameover_menu)
-        UIRenderer.draw_button(canvas, self.btn_gameover_menu, "MENU UTAMA", hover_menu, COLOR_NEON_CYAN, "[M]")
+        UIRenderer.draw_button(canvas, self.btn_gameover_menu, "MENU UTAMA", hover_menu, COLOR_NEON_CYAN)
         if hover_menu and self.mouse_clicked:
             self.reset_game_state()
             self.state = STATE_MAIN_MENU
 
-
         hover_exit = self.is_mouse_inside(self.btn_gameover_exit)
-        UIRenderer.draw_button(canvas, self.btn_gameover_exit, "KELUAR GAME", hover_exit, COLOR_NEON_RED, "[ESC]")
+        UIRenderer.draw_button(canvas, self.btn_gameover_exit, "KELUAR GAME", hover_exit, COLOR_NEON_RED)
         if hover_exit and self.mouse_clicked:
             self.running = False
 
