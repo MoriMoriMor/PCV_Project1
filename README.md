@@ -57,7 +57,7 @@ Sebelum puzzle dimulai pada setiap stage, pemain mengambil foto wajah atau objek
 
 Pemain memosisikan diri di dalam kotak panduan bujursangkar 400x400 piksel di layar, lalu **mengepalkan tangan selama 1.5 detik** (atau menekan tombol `[SPACE]`). Tindakan ini memicu indikator pengisian hijau dan hitung mundur 3 detik. Saat hitungan berakhir, efek kilatan blitz kamera (*white flash*) muncul, dan area dalam bingkai dipotong menjadi citra berukuran 450x450 piksel untuk dibagikan ke dalam 9 kepingan puzzle (ukuran 150x150 piksel per keping).
 
-### 2.4. Gameplay (Permainan Aktif)
+### 2.4. Gameplay
 
 ![Tampilan Gameplay Aktif Stage 1](docs/images/gameplay_stage1.png)
 *Layar permainan aktif pada Stage 1 menampilkan papan puzzle, rak peralatan, dan indikator status.*
@@ -69,7 +69,7 @@ Layar gameplay memuat seluruh elemen aktif permainan:
 - **Kamera Mini (PiP):** Terletak di pojok kiri bawah, menampilkan umpan langsung kamera beserta deteksi kontur tangan hijau dan label status gestur (`KEPAL (FIST)` atau `BUKA (OPEN)`).
 - **Teks Skor:** Ditampilkan secara bersih di pojok kanan bawah layar (`SKOR: 00050`), memanfaatkan ruang kosong agar tidak menutupi papan permainan.
 
-### 2.5. Stage Completed (Penyelesaian Stage)
+### 2.5. Stage Completed
 
 ![Tampilan Stage Selesai](docs/images/stage_completed.png)
 *Layar penyelesaian stage yang memperlihatkan foto utuh puzzle dan akumulasi skor.*
@@ -82,7 +82,7 @@ Kondisi ini tercapai ketika pemain berhasil menyusun seluruh kepingan puzzle kem
 
 Jika pemain menyelesaikan Stage 1 atau Stage 2, permainan berpindah kembali ke tahap Capture untuk mengambil foto baru pada stage berikutnya. Namun jika yang diselesaikan adalah Stage 3, permainan berpindah ke kondisi Game Completed.
 
-### 2.6. Deadlock (Kebuntuan Papan)
+### 2.6. Deadlock
 
 ![Tampilan Kondisi Deadlock](docs/images/deadlock.png)
 *Kondisi deadlock yang ditandai dengan kilatan layar merah dan pemotongan nyawa.*
@@ -94,7 +94,7 @@ Deadlock terjadi apabila papan puzzle mengalami kebuntuan total akibat kepingan 
 - Seluruh rintangan yang ada di papan langsung dihapus secara darurat.
 - **Susunan kepingan puzzle TIDAK di-reset**, sehingga pemain dapat langsung melanjutkan penyusunan dari posisi terakhir tanpa kehilangan kemajuan yang sudah dicapai.
 
-### 2.7. Game Over (Kegagalan Permainan)
+### 2.7. Game Over
 
 ![Tampilan Game Over](docs/images/game_over.png)
 *Layar kegagalan permainan dengan efek kuantisasi warna citra.*
@@ -107,7 +107,7 @@ Game Over terjadi saat seluruh 3 nyawa pemain habis akibat mengalami kebuntuan b
   - **MENU UTAMA:** Kembali ke layar awal permainan.
   - **KELUAR GAME:** Menutup aplikasi.
 
-### 2.8. Game Completed (Kemenangan Permainan)
+### 2.8. Game Completed
 
 ![Tampilan Kemenangan Game Completed](docs/images/game_completed.png)
 *Layar kemenangan mutlak setelah menyelesaikan Stage 3.*
